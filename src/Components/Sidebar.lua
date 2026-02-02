@@ -115,6 +115,14 @@ function Sidebar:init()
 		})
 	end
 
+	self.handleSelectStory = function(story)
+		if self.state.isMultiSelectEnabled then
+			self.props.toggleCompareStory(story)
+		else
+			self.props.setSelectedStory(story)
+		end
+	end
+
 	for _, serviceName in ipairs(USER_SERVICES) do
 		local service = game:GetService(serviceName)
 
@@ -273,7 +281,7 @@ function Sidebar:render()
 
 				storyLists["0_Pinned"] = e(SidebarList, {
 					Children = pinnedChildren,
-					SelectStory = self.props.selectStory,
+					SelectStory = self.handleSelectStory,
 					SelectedStory = self.props.selectedStory,
 					Title = "📌 Pinned",
 					TogglePin = self.togglePin,
@@ -283,7 +291,7 @@ function Sidebar:render()
 			for parent, children in pairs(storyTree) do
 				storyLists[parent] = e(SidebarList, {
 					Children = children,
-					SelectStory = self.props.selectStory,
+					SelectStory = self.handleSelectStory,
 					SelectedStory = self.props.selectedStory,
 					Title = parent,
 					TogglePin = self.togglePin,
@@ -373,19 +381,17 @@ return RoactRodux.connect(function(state)
 	}
 end, function(dispatch)
 	return {
-		selectStory = function(story)
-			-- Bolt: Use internal state for multi-select instead of unreliable keyboard checks in PluginGui
-			if self.state.isMultiSelectEnabled then
-				dispatch({
-					type = "ToggleCompareStory",
-					story = story,
-				})
-			else
-				dispatch({
-					type = "SetSelectedStory",
-					story = story,
-				})
-			end
+		setSelectedStory = function(story)
+			dispatch({
+				type = "SetSelectedStory",
+				story = story,
+			})
+		end,
+		toggleCompareStory = function(story)
+			dispatch({
+				type = "ToggleCompareStory",
+				story = story,
+			})
 		end,
 	}
 end)(Sidebar)
