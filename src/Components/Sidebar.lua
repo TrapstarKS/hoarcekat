@@ -348,7 +348,7 @@ function Sidebar:render()
 						BorderSizePixel = 0,
 						LayoutOrder = 2,
 						Size = UDim2.fromOffset(24, 24),
-						Image = "rbxasset://textures/ui/TopBar/more.png", -- Valid built-in generic icon
+						Image = "http://www.roblox.com/asset/?id=6034510026", -- Valid built-in generic icon
 						ImageColor3 = theme:GetColor("MainText", "Default"),
 						[Roact.Event.Activated] = self.toggleMultiSelect,
 					}),

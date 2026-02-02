@@ -66,7 +66,22 @@ function Preview:init()
 		layoutMode = "Split", -- "Split" or "Stack"
 		deviceSize = nil, -- Vector2 or nil
 		isPoppedOut = false,
+		backgroundColorIndex = 1,
 	}
+
+	self.toggleBackgroundColor = function()
+		local colors = {
+			Color3.fromRGB(0, 0, 0),       -- Black
+			Color3.fromRGB(255, 255, 255), -- White
+			Color3.fromRGB(46, 46, 46),    -- Dark Grey (Roblox Dark)
+			Color3.fromRGB(240, 240, 240), -- Light Grey (Roblox Light)
+		}
+
+		local nextIndex = (self.state.backgroundColorIndex % #colors) + 1
+		self:setState({
+			backgroundColorIndex = nextIndex
+		})
+	end
 
 	self.popOutWidget = nil
 	self.togglePopOut = function()
@@ -74,24 +89,33 @@ function Preview:init()
 
 		if not self.popOutWidget then
 			local widget = self.props.Plugin:CreateDockWidgetPluginGui(
-				"HoarcekatPreviewPopOut",
-				DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 800, 600)
+				"HoarcekatPreviewPopOut_v2", -- Changed ID to force new widget creation if old one is stuck
+				DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 800, 600)
 			)
 			widget.Title = "Hoarcekat Preview"
 			widget.Name = "HoarcekatPreviewPopOut"
 			widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+			-- Bolt: Ensure we listen to the widget's close event effectively
 			widget:GetPropertyChangedSignal("Enabled"):Connect(function()
-				self:setState({
-					isPoppedOut = widget.Enabled
-				})
+				-- Only update state if it actually changed to avoid cycles
+				if self.state.isPoppedOut ~= widget.Enabled then
+					self:setState({
+						isPoppedOut = widget.Enabled
+					})
+				end
 			end)
 
 			self.popOutWidget = widget
 		end
 
+		-- Explicitly set enabled state
 		self.popOutWidget.Enabled = not self.popOutWidget.Enabled
-		-- State update via signal above
+
+		-- Force state update immediately for responsiveness, though signal will also fire
+		self:setState({
+			isPoppedOut = self.popOutWidget.Enabled
+		})
 	end
 
 	self.updateDeviceSize = function(size)
@@ -145,7 +169,8 @@ end
 function Preview:didUpdate(prevProps, prevState)
 	if prevProps.selectedStory ~= self.props.selectedStory
 		or prevState.deviceSize ~= self.state.deviceSize
-		or prevState.layoutMode ~= self.state.layoutMode then
+		or prevState.layoutMode ~= self.state.layoutMode
+		or prevState.backgroundColorIndex ~= self.state.backgroundColorIndex then
 		self:refreshPreview()
 	end
 
@@ -256,8 +281,17 @@ function Preview:refreshPreview()
 		end
 
 		-- Device Emulation (Applied to all targets)
-		if self.state.deviceSize then
-			local dSize = self.state.deviceSize
+		-- Bolt: Always wrap to apply background color, even if not emulating size (fit mode)
+		local dSize = self.state.deviceSize
+		local bgColors = {
+			Color3.fromRGB(0, 0, 0),       -- Black
+			Color3.fromRGB(255, 255, 255), -- White
+			Color3.fromRGB(46, 46, 46),    -- Dark Grey
+			Color3.fromRGB(240, 240, 240), -- Light Grey
+		}
+		local bgColor = bgColors[self.state.backgroundColorIndex] or bgColors[1]
+
+		if dSize then
 			local container = Instance.new("Frame")
 			container.Name = "DeviceContainer"
 			container.BackgroundTransparency = 1
@@ -268,7 +302,8 @@ function Preview:refreshPreview()
 			wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
 			wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
 			wrapper.Position = UDim2.fromScale(0.5, 0.5)
-			wrapper.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black bg for device
+
+			wrapper.BackgroundColor3 = bgColor
 			wrapper.BorderSizePixel = 2
 			wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
 			wrapper.ClipsDescendants = true
@@ -281,6 +316,17 @@ function Preview:refreshPreview()
 
 			nextState.target.Parent = wrapper
 			nextState.target = container -- Replace target with container for display update
+		else
+			-- No specific device size (Fit mode)
+			-- We still want to apply the background color behind the story
+			local container = Instance.new("Frame")
+			container.Name = "FitContainer"
+			container.Size = UDim2.fromScale(1, 1)
+			container.BackgroundColor3 = bgColor
+			container.BorderSizePixel = 0
+
+			nextState.target.Parent = container
+			nextState.target = container
 		end
 
 		table.insert(newStates, nextState)
@@ -498,7 +544,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.togglePopOut,
-				Image = "rbxasset://textures/ui/Actions/launch.png",
+				Image = "http://www.roblox.com/asset/?id=6026568256",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
@@ -514,7 +560,22 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleLayout,
-				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/LuaApp/icons/ic-list.png" or "rbxasset://textures/ui/LuaApp/icons/ic-grid.png",
+				Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+			}),
+		}),
+
+		BackgroundColorButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -270, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.toggleBackgroundColor,
+				Image = "http://www.roblox.com/asset/?id=6026568253",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
