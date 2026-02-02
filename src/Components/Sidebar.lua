@@ -79,7 +79,14 @@ function Sidebar:init()
 	self.state = {
 		searchTerm = "",
 		pinnedStories = {},
+		isMultiSelectEnabled = false,
 	}
+
+	self.toggleMultiSelect = function()
+		self:setState({
+			isMultiSelectEnabled = not self.state.isMultiSelectEnabled
+		})
+	end
 
 	self.updateSearch = function(rbx)
 		self:setState({
@@ -298,22 +305,44 @@ function Sidebar:render()
 					PaddingTop = UDim.new(0, 2),
 				}),
 
-				SearchBar = e("TextBox", {
-					BackgroundColor3 = theme:GetColor("InputFieldBackground", "Default"),
-					BorderSizePixel = 1,
-					BorderColor3 = theme:GetColor("InputFieldBorder", "Default"),
+				Header = e("Frame", {
+					BackgroundTransparency = 1,
 					LayoutOrder = 0,
 					Size = UDim2.new(1, -10, 0, 24),
-					Text = "",
-					PlaceholderText = "Search stories...",
-					TextColor3 = theme:GetColor("MainText", "Default"),
-					PlaceholderColor3 = theme:GetColor("DimmedText", "Default"),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					ClearTextOnFocus = false,
-					[Roact.Change.Text] = self.updateSearch,
 				}, {
-					UIPadding = e("UIPadding", {
-						PaddingLeft = UDim.new(0, 5),
+					Layout = e("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						Padding = UDim.new(0, 4),
+						SortOrder = Enum.SortOrder.LayoutOrder,
+					}),
+
+					SearchBar = e("TextBox", {
+						BackgroundColor3 = theme:GetColor("InputFieldBackground", "Default"),
+						BorderSizePixel = 1,
+						BorderColor3 = theme:GetColor("InputFieldBorder", "Default"),
+						LayoutOrder = 1,
+						Size = UDim2.new(1, -28, 1, 0), -- Adjusted width
+						Text = "",
+						PlaceholderText = "Search...",
+						TextColor3 = theme:GetColor("MainText", "Default"),
+						PlaceholderColor3 = theme:GetColor("DimmedText", "Default"),
+						TextXAlignment = Enum.TextXAlignment.Left,
+						ClearTextOnFocus = false,
+						[Roact.Change.Text] = self.updateSearch,
+					}, {
+						UIPadding = e("UIPadding", {
+							PaddingLeft = UDim.new(0, 5),
+						}),
+					}),
+
+					MultiSelectButton = e("ImageButton", {
+						BackgroundColor3 = self.state.isMultiSelectEnabled and theme:GetColor("Button", "Selected") or theme:GetColor("Button", "Default"),
+						BorderSizePixel = 0,
+						LayoutOrder = 2,
+						Size = UDim2.fromOffset(24, 24),
+						Image = "rbxasset://textures/ui/Input/Xbox/LeftShoulder.png", -- Placeholder/Icon for multi-select
+						ImageColor3 = theme:GetColor("MainText", "Default"),
+						[Roact.Event.Activated] = self.toggleMultiSelect,
 					}),
 				}),
 
@@ -345,11 +374,8 @@ return RoactRodux.connect(function(state)
 end, function(dispatch)
 	return {
 		selectStory = function(story)
-			local UserInputService = game:GetService("UserInputService")
-			local isCtrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
-			local isCmd = UserInputService:IsKeyDown(Enum.KeyCode.LeftMeta) or UserInputService:IsKeyDown(Enum.KeyCode.RightMeta)
-
-			if isCtrl or isCmd then
+			-- Bolt: Use internal state for multi-select instead of unreliable keyboard checks in PluginGui
+			if self.state.isMultiSelectEnabled then
 				dispatch({
 					type = "ToggleCompareStory",
 					story = story,

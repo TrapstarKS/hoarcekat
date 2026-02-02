@@ -62,6 +62,7 @@ function Preview:init()
 		showStats = false,
 		showDebug = false,
 		renderCount = 0,
+		layoutMode = "Split", -- "Split" or "Stack"
 	}
 
 	self.toggleStats = function()
@@ -73,6 +74,12 @@ function Preview:init()
 	self.toggleDebug = function()
 		self:setState({
 			showDebug = not self.state.showDebug,
+		})
+	end
+
+	self.toggleLayout = function()
+		self:setState({
+			layoutMode = self.state.layoutMode == "Split" and "Stack" or "Split"
 		})
 	end
 end
@@ -167,11 +174,17 @@ function Preview:refreshPreview()
 
 		-- Position the targets if multiple
 		if #selectedStories > 1 then
-			nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
-			nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
-			-- Add a border/separator?
-			nextState.target.BorderSizePixel = 1
-			nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
+			if self.state.layoutMode == "Split" then
+				nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
+				nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
+				nextState.target.BorderSizePixel = 1
+				nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
+			else -- Stack
+				nextState.target.Size = UDim2.new(1, 0, 1, 0)
+				nextState.target.Position = UDim2.new(0, 0, 0, 0)
+				nextState.target.BackgroundTransparency = 1 -- Ensure stacking works visually
+				nextState.target.BorderSizePixel = 0
+			end
 		end
 
 		table.insert(newStates, nextState)
@@ -366,7 +379,7 @@ function Preview:render()
 			}),
 		}),
 
-		StatsButton = e("Frame", {
+		LayoutButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -90, 0.99),
@@ -374,8 +387,23 @@ function Preview:render()
 			ZIndex = 2,
 		}, {
 			Button = e(FloatingButton, {
+				Activated = self.toggleLayout,
+				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/scroll_button_down.png" or "rbxasset://textures/ui/scroll_button_up.png", -- Placeholder for Split/Stack
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+			}),
+		}),
+
+		StatsButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -135, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 2,
+		}, {
+			Button = e(FloatingButton, {
 				Activated = self.toggleStats,
-				Image = "rbxasset://textures/ui/Performance.png", -- This is a valid built-in asset
+				Image = "http://www.roblox.com/asset/?id=6031084742",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -384,13 +412,13 @@ function Preview:render()
 		DebugButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -135, 0.99),
+			Position = UDim2.new(0.99, -180, 0.99),
 			Size = UDim2.fromOffset(40, 40),
 			ZIndex = 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleDebug,
-				Image = "rbxasset://textures/ui/InspectMenu/icon_inspect.png", -- Better than 'Info.png'
+				Image = "http://www.roblox.com/asset/?id=6026568210",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
