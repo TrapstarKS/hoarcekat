@@ -375,7 +375,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleStats,
-				Image = "rbxasset://textures/ui/Performance.png",
+				Image = "rbxasset://textures/ui/Performance.png", -- This is a valid built-in asset
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -390,7 +390,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleDebug,
-				Image = "rbxasset://textures/ui/Info.png",
+				Image = "rbxasset://textures/ui/InspectMenu/icon_inspect.png", -- Better than 'Info.png'
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -403,7 +403,16 @@ function Preview:render()
 
 		DebugOverlay = e(DebugOverlay, {
 			Visible = self.state.showDebug,
-			Target = self.currentPreview and self.currentPreview.target,
+			-- For multi-preview, we might want to target specific frames or the container.
+			-- Ideally we want to outline everything inside the preview root.
+			-- self.currentPreview can be a table of states.
+			-- Let's pass the list of targets if possible, or just the whole preview root?
+			-- Actually, the DebugOverlay expects a single "Target" root to scan.
+			-- If we have multiple stories, they are parented to `self.rootRef`.
+			-- So let's pass `self.rootRef`'s value as the target?
+			-- But `self.rootRef` is the container for the Preview component itself.
+			-- Let's try passing the ref value if available.
+			Target = self.rootRef:getValue(),
 		}),
 
 		-- TODO: Multi-story TrackRemoved

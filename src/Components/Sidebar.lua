@@ -346,7 +346,10 @@ end, function(dispatch)
 	return {
 		selectStory = function(story)
 			local UserInputService = game:GetService("UserInputService")
-			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+			local isCtrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+			local isCmd = UserInputService:IsKeyDown(Enum.KeyCode.LeftMeta) or UserInputService:IsKeyDown(Enum.KeyCode.RightMeta)
+
+			if isCtrl or isCmd then
 				dispatch({
 					type = "ToggleCompareStory",
 					story = story,
