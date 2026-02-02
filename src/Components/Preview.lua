@@ -96,8 +96,10 @@ function Preview:didMount()
 	self:refreshPreview()
 end
 
-function Preview:didUpdate(prevProps)
-	if prevProps.selectedStory ~= self.props.selectedStory then
+function Preview:didUpdate(prevProps, prevState)
+	if prevProps.selectedStory ~= self.props.selectedStory
+		or prevState.deviceSize ~= self.state.deviceSize
+		or prevState.layoutMode ~= self.state.layoutMode then
 		self:refreshPreview()
 	end
 end
