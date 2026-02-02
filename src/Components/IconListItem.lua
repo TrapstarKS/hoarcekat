@@ -20,6 +20,7 @@ local function IconListItem(props)
 				Text = "",
 
 				[Roact.Event.Activated] = props.Activated,
+				[Roact.Event.MouseButton2Click] = props.OnRightClick,
 			}, {
 				Layout = e("UIListLayout", {
 					FillDirection = Enum.FillDirection.Horizontal,

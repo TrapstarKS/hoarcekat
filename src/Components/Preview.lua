@@ -6,6 +6,8 @@ local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
 local Assets = require(Hoarcekat.Plugin.Assets)
 local EventConnection = require(script.Parent.EventConnection)
 local FloatingButton = require(script.Parent.FloatingButton)
+local StatsOverlay = require(script.Parent.StatsOverlay)
+local DebugOverlay = require(script.Parent.DebugOverlay)
 local Maid = require(Hoarcekat.Plugin.Maid)
 local Roact = require(Hoarcekat.Vendor.Roact)
 local RoactRodux = require(Hoarcekat.Vendor.RoactRodux)
@@ -18,7 +20,7 @@ local Preview = Roact.PureComponent:extend("Preview")
 function Preview:init()
 	self.rootRef = Roact.createRef()
 
-	self.currentPreview = nil
+	self.currentPreview = nil -- { state1, state2? }
 	self.errorID = 0
 
 	local display = Instance.new("ScreenGui")
@@ -29,8 +31,23 @@ function Preview:init()
 	self.expand = false
 
 	self.openSelection = function()
-		if self.currentPreview and self.currentPreview.target then
-			Selection:Set({ self.currentPreview.target })
+		-- Select all targets
+		local selection = {}
+		if self.currentPreview then
+			if self.currentPreview.target then
+				table.insert(selection, self.currentPreview.target)
+			elseif type(self.currentPreview) == "table" then
+				-- Assuming new structure for multi-preview
+				for _, state in pairs(self.currentPreview) do
+					if state.target then
+						table.insert(selection, state.target)
+					end
+				end
+			end
+		end
+
+		if #selection > 0 then
+			Selection:Set(selection)
 		end
 	end
 
@@ -39,6 +56,24 @@ function Preview:init()
 		self.display.Parent = self.expand and CoreGui or nil
 
 		self:updateDisplay()
+	end
+
+	self.state = {
+		showStats = false,
+		showDebug = false,
+		renderCount = 0,
+	}
+
+	self.toggleStats = function()
+		self:setState({
+			showStats = not self.state.showStats,
+		})
+	end
+
+	self.toggleDebug = function()
+		self:setState({
+			showDebug = not self.state.showDebug,
+		})
 	end
 end
 
@@ -79,40 +114,90 @@ function Preview:updateDisplay()
 	if not self.currentPreview then
 		return
 	end
-	local target = self.currentPreview.target
-	if not target then
-		return
+
+	-- Handle multiple previews or single preview
+	local states = self.currentPreview
+	-- If it's a single state (old behavior), wrap it
+	if states.target then
+		states = {states}
 	end
-	if self.expand then
-		target.Parent = self.display
-	else
-		target.Parent = self.rootRef:getValue()
+
+	for _, state in pairs(states) do
+		local target = state.target
+		if target then
+			if self.expand then
+				target.Parent = self.display
+			else
+				target.Parent = self.rootRef:getValue()
+			end
+		end
 	end
 end
 
 function Preview:refreshPreview()
-	local selectedStory = self.props.selectedStory
-	if not selectedStory then
+	-- Support list of stories or single story
+	local selectedStories = self.props.selectedStory
+	if type(selectedStories) ~= "table" or selectedStories.ClassName then
+		-- Single instance or nil
+		selectedStories = {selectedStories}
+	end
+
+	if #selectedStories == 0 or not selectedStories[1] then
 		self:clearPreview()
 		return
 	end
-	local err, nextState = self:prepareState(selectedStory)
-	if err then
-		self:setError(err)
-		return
-	end
+
 	self:clearPreview()
-	self.currentPreview = nextState
+	self:cancelError()
+
+	local newStates = {}
+
+	for i, story in ipairs(selectedStories) do
+		local err, nextState = self:prepareState(story)
+		if err then
+			self:setError(err)
+			-- Cleanup already prepared states
+			for _, s in pairs(newStates) do
+				s:destroy()
+			end
+			return
+		end
+
+		-- Position the targets if multiple
+		if #selectedStories > 1 then
+			nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
+			nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
+			-- Add a border/separator?
+			nextState.target.BorderSizePixel = 1
+			nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
+		end
+
+		table.insert(newStates, nextState)
+	end
+
+	self.currentPreview = newStates
 	self:updateDisplay()
+
+	self:setState({
+		renderCount = self.state.renderCount + 1
+	})
 end
 
 function Preview:clearPreview()
 	self:cancelError()
-	local state = self.currentPreview
-	if state == nil then
+	local states = self.currentPreview
+	if states == nil then
 		return
 	end
-	state:destroy()
+
+	if states.destroy then
+		states:destroy()
+	elseif type(states) == "table" then
+		for _, s in pairs(states) do
+			if s.destroy then s:destroy() end
+		end
+	end
+
 	self.currentPreview = nil
 end
 
@@ -264,14 +349,48 @@ function Preview:render()
 			}),
 		}),
 
-		TrackRemoved = selectedStory and e(EventConnection, {
-			callback = function()
-				if not selectedStory:IsDescendantOf(game) then
-					self.props.endPreview()
-				end
-			end,
-			event = selectedStory.AncestryChanged,
+		StatsButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -90, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.toggleStats,
+				Image = "rbxasset://textures/ui/Performance.png",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+			}),
 		}),
+
+		DebugButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -135, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.toggleDebug,
+				Image = "rbxasset://textures/ui/Info.png",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+			}),
+		}),
+
+		StatsOverlay = e(StatsOverlay, {
+			Visible = self.state.showStats,
+			RenderCount = self.state.renderCount,
+		}),
+
+		DebugOverlay = e(DebugOverlay, {
+			Visible = self.state.showDebug,
+			Target = self.currentPreview and self.currentPreview.target,
+		}),
+
+		-- TODO: Multi-story TrackRemoved
+		-- For now, just track the first one or iterate if we can dynamically create elements
 	})
 end
 

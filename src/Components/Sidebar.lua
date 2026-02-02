@@ -29,6 +29,16 @@ local function isStoryScript(instance)
 	return instance:IsA("ModuleScript") and instance.Name:match("%.story$")
 end
 
+local function isSelected(story, selectedStory)
+	if type(selectedStory) == "table" then
+		for _, s in ipairs(selectedStory) do
+			if s == story then return true end
+		end
+		return false
+	end
+	return story == selectedStory
+end
+
 local function SidebarList(props)
 	local contents = {}
 
@@ -38,8 +48,11 @@ local function SidebarList(props)
 				Activated = function()
 					props.SelectStory(child)
 				end,
+				OnRightClick = function()
+					props.TogglePin(child)
+				end,
 				Icon = Assets.hamburger,
-				Selected = props.SelectedStory == child,
+				Selected = isSelected(child, props.SelectedStory),
 				Text = child.Name:sub(1, #child.Name - #".story"),
 			})
 		else
@@ -48,6 +61,7 @@ local function SidebarList(props)
 				SelectStory = props.SelectStory,
 				SelectedStory = props.SelectedStory,
 				Title = childName,
+				TogglePin = props.TogglePin,
 			})
 		end
 	end
@@ -61,6 +75,38 @@ function Sidebar:init()
 	self.maid = Maid.new()
 	self.watcherMaid = Maid.new()
 	self.maid:GiveTask(self.watcherMaid)
+
+	self.state = {
+		searchTerm = "",
+		pinnedStories = {},
+	}
+
+	self.updateSearch = function(rbx)
+		self:setState({
+			searchTerm = rbx.Text
+		})
+	end
+
+	self.togglePin = function(story)
+		local pinned = self.state.pinnedStories
+		local newPinned = {}
+		local found = false
+		for _, s in ipairs(pinned) do
+			if s ~= story then
+				table.insert(newPinned, s)
+			else
+				found = true
+			end
+		end
+
+		if not found then
+			table.insert(newPinned, story)
+		end
+
+		self:setState({
+			pinnedStories = newPinned
+		})
+	end
 
 	for _, serviceName in ipairs(USER_SERVICES) do
 		local service = game:GetService(serviceName)
@@ -178,7 +224,13 @@ function Sidebar:render()
 	return e(StudioThemeAccessor, {}, {
 		function(theme)
 			local storyTree = {}
+			local searchTerm = self.state.searchTerm and self.state.searchTerm:lower() or ""
+
 			for storyScript in pairs(self.state.storyScripts or {}) do
+				if searchTerm ~= "" and not storyScript.Name:lower():find(searchTerm, 1, true) then
+					continue
+				end
+
 				local hierarchy = {}
 				local parent = storyScript
 
@@ -205,12 +257,29 @@ function Sidebar:render()
 			end
 
 			local storyLists = {}
+
+			if #self.state.pinnedStories > 0 then
+				local pinnedChildren = {}
+				for _, story in ipairs(self.state.pinnedStories) do
+					pinnedChildren[story.Name] = story
+				end
+
+				storyLists["0_Pinned"] = e(SidebarList, {
+					Children = pinnedChildren,
+					SelectStory = self.props.selectStory,
+					SelectedStory = self.props.selectedStory,
+					Title = "📌 Pinned",
+					TogglePin = self.togglePin,
+				})
+			end
+
 			for parent, children in pairs(storyTree) do
 				storyLists[parent] = e(SidebarList, {
 					Children = children,
 					SelectStory = self.props.selectStory,
 					SelectedStory = self.props.selectedStory,
 					Title = parent,
+					TogglePin = self.togglePin,
 				})
 			end
 
@@ -227,6 +296,25 @@ function Sidebar:render()
 				UIPadding = e("UIPadding", {
 					PaddingLeft = UDim.new(0, 5),
 					PaddingTop = UDim.new(0, 2),
+				}),
+
+				SearchBar = e("TextBox", {
+					BackgroundColor3 = theme:GetColor("InputFieldBackground", "Default"),
+					BorderSizePixel = 1,
+					BorderColor3 = theme:GetColor("InputFieldBorder", "Default"),
+					LayoutOrder = 0,
+					Size = UDim2.new(1, -10, 0, 24),
+					Text = "",
+					PlaceholderText = "Search stories...",
+					TextColor3 = theme:GetColor("MainText", "Default"),
+					PlaceholderColor3 = theme:GetColor("DimmedText", "Default"),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					ClearTextOnFocus = false,
+					[Roact.Change.Text] = self.updateSearch,
+				}, {
+					UIPadding = e("UIPadding", {
+						PaddingLeft = UDim.new(0, 5),
+					}),
 				}),
 
 				StoriesLabel = e(TextLabel, {
@@ -257,10 +345,18 @@ return RoactRodux.connect(function(state)
 end, function(dispatch)
 	return {
 		selectStory = function(story)
-			dispatch({
-				type = "SetSelectedStory",
-				story = story,
-			})
+			local UserInputService = game:GetService("UserInputService")
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+				dispatch({
+					type = "ToggleCompareStory",
+					story = story,
+				})
+			else
+				dispatch({
+					type = "SetSelectedStory",
+					story = story,
+				})
+			end
 		end,
 	}
 end)(Sidebar)
