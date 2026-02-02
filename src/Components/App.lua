@@ -20,7 +20,9 @@ local function App(props)
 					Mouse = props.Mouse,
 				}, {
 					Left = e(Sidebar),
-					Right = e(Preview),
+					Right = e(Preview, {
+						Plugin = props.Plugin,
+					}),
 				}),
 			})
 		end,

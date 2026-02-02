@@ -65,7 +65,34 @@ function Preview:init()
 		renderCount = 0,
 		layoutMode = "Split", -- "Split" or "Stack"
 		deviceSize = nil, -- Vector2 or nil
+		isPoppedOut = false,
 	}
+
+	self.popOutWidget = nil
+	self.togglePopOut = function()
+		if not self.props.Plugin then return end
+
+		if not self.popOutWidget then
+			local widget = self.props.Plugin:CreateDockWidgetPluginGui(
+				"HoarcekatPreviewPopOut",
+				DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, true, false, 800, 600)
+			)
+			widget.Title = "Hoarcekat Preview"
+			widget.Name = "HoarcekatPreviewPopOut"
+			widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+			widget:GetPropertyChangedSignal("Enabled"):Connect(function()
+				self:setState({
+					isPoppedOut = widget.Enabled
+				})
+			end)
+
+			self.popOutWidget = widget
+		end
+
+		self.popOutWidget.Enabled = not self.popOutWidget.Enabled
+		-- State update via signal above
+	end
 
 	self.updateDeviceSize = function(size)
 		self:setState({
@@ -121,6 +148,10 @@ function Preview:didUpdate(prevProps, prevState)
 		or prevState.layoutMode ~= self.state.layoutMode then
 		self:refreshPreview()
 	end
+
+	if prevState.isPoppedOut ~= self.state.isPoppedOut then
+		self:updateDisplay()
+	end
 end
 
 function Preview:willUnmount()
@@ -128,6 +159,10 @@ function Preview:willUnmount()
 
 	if self.display then
 		self.display:Destroy()
+	end
+
+	if self.popOutWidget then
+		self.popOutWidget:Destroy()
 	end
 end
 
@@ -160,14 +195,18 @@ function Preview:updateDisplay()
 		states = {states}
 	end
 
+	local parent
+	if self.state.isPoppedOut and self.popOutWidget then
+		parent = self.popOutWidget
+	elseif self.expand then
+		parent = self.display
+	else
+		parent = self.rootRef:getValue()
+	end
+
 	for _, state in pairs(states) do
-		local target = state.target
-		if target then
-			if self.expand then
-				target.Parent = self.display
-			else
-				target.Parent = self.rootRef:getValue()
-			end
+		if state.target then
+			state.target.Parent = parent
 		end
 	end
 end
@@ -450,7 +489,7 @@ function Preview:render()
 			}),
 		}),
 
-		LayoutButton = e("Frame", {
+		PopOutButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -90, 0.99),
@@ -458,8 +497,24 @@ function Preview:render()
 			ZIndex = 2,
 		}, {
 			Button = e(FloatingButton, {
+				Activated = self.togglePopOut,
+				Image = "rbxasset://textures/ui/Actions/launch.png",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+				ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
+			}),
+		}),
+
+		LayoutButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -135, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 2,
+		}, {
+			Button = e(FloatingButton, {
 				Activated = self.toggleLayout,
-				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/ViewToggle_Col.png" or "rbxasset://textures/ui/ViewToggle_Row.png", -- Better valid icons for layout
+				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/LuaApp/icons/ic-list.png" or "rbxasset://textures/ui/LuaApp/icons/ic-grid.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -468,7 +523,7 @@ function Preview:render()
 		StatsButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -135, 0.99),
+			Position = UDim2.new(0.99, -180, 0.99),
 			Size = UDim2.fromOffset(40, 40),
 			ZIndex = 2,
 		}, {
@@ -483,7 +538,7 @@ function Preview:render()
 		DebugButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -180, 0.99),
+			Position = UDim2.new(0.99, -225, 0.99),
 			Size = UDim2.fromOffset(40, 40),
 			ZIndex = 2,
 		}, {
