@@ -151,8 +151,25 @@ function Preview:prepareState(selectedStory)
 			return state.monkeyRequireCache[otherScript]
 		end
 
+		-- Bolt: Throttle hot reloading to avoid lag while typing.
+		-- Reloading on every keystroke (Source change) is too expensive.
+		local reloadParams = { cancelled = false }
+		state.monkeyRequireMaid:GiveTask(function()
+			reloadParams.cancelled = true
+		end)
+
 		state.monkeyRequireMaid:GiveTask(otherScript.Changed:connect(function()
-			self:refreshPreview()
+			-- Cancel any pending reload for this script
+			reloadParams.cancelled = true
+
+			-- Create a new reload task
+			local myParams = { cancelled = false }
+			reloadParams = myParams
+
+			task.delay(0.5, function()
+				if myParams.cancelled then return end
+				self:refreshPreview()
+			end)
 		end))
 
 		-- loadstring is used to avoid cache while preserving `script` (which requiring a clone wouldn't do)
