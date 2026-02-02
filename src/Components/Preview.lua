@@ -20,6 +20,7 @@ local Preview = Roact.PureComponent:extend("Preview")
 
 function Preview:init()
 	self.rootRef = Roact.createRef()
+	self.storyContainerRef = Roact.createRef()
 
 	self.currentPreview = nil -- { state1, state2? }
 	self.errorID = 0
@@ -244,7 +245,7 @@ function Preview:updateDisplay()
 	elseif self.expand then
 		parent = self.display
 	else
-		parent = self.rootRef:getValue()
+		parent = self.storyContainerRef:getValue()
 	end
 
 	for _, state in pairs(states) do
@@ -635,9 +636,25 @@ function Preview:render()
 			RenderCount = self.state.renderCount,
 		}),
 
+		StoryContainer = e("Frame", {
+			Name = "StoryContainer",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			ZIndex = 1,
+			[Roact.Ref] = self.storyContainerRef,
+		}),
+
 		DebugOverlay = DebugOverlay and e(DebugOverlay, {
 			Visible = self.state.showDebug,
-			Target = self.rootRef:getValue(),
+			Target = (function()
+				if self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				elseif self.expand and self.display then
+					return self.display
+				else
+					return self.storyContainerRef:getValue()
+				end
+			end)(),
 		}),
 
 		-- Bolt: Handle TrackRemoved for multiple stories
