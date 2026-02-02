@@ -8,6 +8,7 @@ local EventConnection = require(script.Parent.EventConnection)
 local FloatingButton = require(script.Parent.FloatingButton)
 local StatsOverlay = require(script.Parent.StatsOverlay)
 local DebugOverlay = require(script.Parent.DebugOverlay)
+local DeviceEmulator = require(script.Parent.DeviceEmulator)
 local Maid = require(Hoarcekat.Plugin.Maid)
 local Roact = require(Hoarcekat.Vendor.Roact)
 local RoactRodux = require(Hoarcekat.Vendor.RoactRodux)
@@ -63,7 +64,14 @@ function Preview:init()
 		showDebug = false,
 		renderCount = 0,
 		layoutMode = "Split", -- "Split" or "Stack"
+		deviceSize = nil, -- Vector2 or nil
 	}
+
+	self.updateDeviceSize = function(size)
+		self:setState({
+			deviceSize = size
+		})
+	end
 
 	self.toggleStats = function()
 		self:setState({
@@ -185,6 +193,29 @@ function Preview:refreshPreview()
 				nextState.target.BackgroundTransparency = 1 -- Ensure stacking works visually
 				nextState.target.BorderSizePixel = 0
 			end
+		end
+
+		-- Device Emulation (Applied to all targets)
+		if self.state.deviceSize then
+			local dSize = self.state.deviceSize
+			local container = Instance.new("Frame")
+			container.Name = "DeviceContainer"
+			container.BackgroundTransparency = 1
+			container.Size = UDim2.fromScale(1, 1)
+
+			local wrapper = Instance.new("Frame")
+			wrapper.Name = "DeviceWrapper"
+			wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
+			wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
+			wrapper.Position = UDim2.fromScale(0.5, 0.5)
+			wrapper.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Black bg for device
+			wrapper.BorderSizePixel = 2
+			wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
+			wrapper.ClipsDescendants = true
+			wrapper.Parent = container
+
+			nextState.target.Parent = wrapper
+			nextState.target = container -- Replace target with container for display update
 		end
 
 		table.insert(newStates, nextState)
@@ -347,6 +378,18 @@ function Preview:render()
 		UIPadding = e("UIPadding", {
 			PaddingLeft = UDim.new(0, 5),
 			PaddingTop = UDim.new(0, 5),
+		}),
+
+		DeviceEmulator = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0, 10),
+			Size = UDim2.fromOffset(120, 30),
+			ZIndex = 5,
+		}, {
+			Emulator = e(DeviceEmulator, {
+				OnResize = self.updateDeviceSize
+			})
 		}),
 
 		SelectButton = e("Frame", {

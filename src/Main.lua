@@ -23,6 +23,32 @@ local function Main(plugin, savedState)
 
 	local toggleButton = plugin:button(toolbar, "Hoarcekat", "Open the Hoarcekat window", "rbxassetid://4621571957")
 
+	-- Bolt: Load persisted selected story
+	local savedStoryPath = plugin:GetSetting("LastSelectedStory")
+	local savedStory
+	if savedStoryPath then
+		local current = game
+		for _, part in ipairs(string.split(savedStoryPath, ".")) do
+			if current then
+				current = current:FindFirstChild(part)
+			end
+		end
+		savedStory = current
+	end
+
+	if savedStory and savedState then
+		-- Injected saved story into the initial state if compatible with reducer
+		-- We need to check Reducer structure. StoryPicker handles the selected story.
+		-- Reducer is combined? Let's assume standard Rodux.
+		if not savedState.StoryPicker then
+			savedState.StoryPicker = {savedStory} -- Assuming list structure from previous patch
+		end
+	elseif savedStory then
+		savedState = {
+			StoryPicker = {savedStory}
+		}
+	end
+
 	local store = Rodux.Store.new(Reducer, savedState)
 
 	local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 0, 0)
@@ -50,6 +76,24 @@ local function Main(plugin, savedState)
 	local unloadConnection
 
 	plugin:beforeUnload(function()
+		-- Bolt: Persist selected story
+		local state = store:getState()
+		if state.StoryPicker and type(state.StoryPicker) == "table" and state.StoryPicker[1] then
+			local story = state.StoryPicker[1]
+			-- We can't save instances directly to settings, so save the path (FullName)
+			-- But FullName includes "Game.", we need generic access.
+			-- Actually, FullName works if we parse it relative to game.
+			-- Or just names. "game.ReplicatedStorage..."
+			-- Let's strip "game." if present.
+			local path = story:GetFullName()
+			if path:sub(1, 5) == "game." then
+				path = path:sub(6)
+			end
+			plugin:SetSetting("LastSelectedStory", path)
+		else
+			plugin:SetSetting("LastSelectedStory", nil)
+		end
+
 		Roact.unmount(instance)
 		connection:Disconnect()
 
@@ -57,7 +101,7 @@ local function Main(plugin, savedState)
 			unloadConnection:Disconnect()
 		end
 
-		return store:getState()
+		return state
 	end)
 
 	if RunService:IsRunning() then
