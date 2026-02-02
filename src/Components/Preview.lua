@@ -52,6 +52,10 @@ end
 
 function Preview:willUnmount()
 	self:clearPreview()
+
+	if self.display then
+		self.display:Destroy()
+	end
 end
 
 local ERROR_DELAY = 1

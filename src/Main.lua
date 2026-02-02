@@ -47,9 +47,16 @@ local function Main(plugin, savedState)
 
 	local instance = Roact.mount(app, gui, "Hoarcekat")
 
+	local unloadConnection
+
 	plugin:beforeUnload(function()
 		Roact.unmount(instance)
 		connection:Disconnect()
+
+		if unloadConnection then
+			unloadConnection:Disconnect()
+		end
+
 		return store:getState()
 	end)
 
@@ -57,7 +64,6 @@ local function Main(plugin, savedState)
 		return
 	end
 
-	local unloadConnection
 	unloadConnection = gui.AncestryChanged:Connect(function()
 		print("New Hoarcekat version coming online; unloading the old version")
 		unloadConnection:Disconnect()
