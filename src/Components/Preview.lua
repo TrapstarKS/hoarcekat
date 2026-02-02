@@ -65,9 +65,20 @@ function Preview:init()
 		renderCount = 0,
 		layoutMode = "Split", -- "Split" or "Stack"
 		deviceSize = nil, -- Vector2 or nil
+		deviceName = nil, -- Saved device name
 		isPoppedOut = false,
 		backgroundColorIndex = 1,
 	}
+
+	-- Load device setting
+	if self.props.Plugin then
+		local success, savedName = pcall(function()
+			return self.props.Plugin:GetSetting("Hoarcekat_DeviceName")
+		end)
+		if success and savedName then
+			self.state.deviceName = savedName
+		end
+	end
 
 	self.toggleBackgroundColor = function()
 		local colors = {
@@ -118,10 +129,17 @@ function Preview:init()
 		})
 	end
 
-	self.updateDeviceSize = function(size)
+	self.updateDeviceSize = function(size, device)
 		self:setState({
-			deviceSize = size
+			deviceSize = size,
+			deviceName = device and device.Name
 		})
+
+		if device and self.props.Plugin then
+			pcall(function()
+				self.props.Plugin:SetSetting("Hoarcekat_DeviceName", device.Name)
+			end)
+		end
 	end
 
 	self.toggleStats = function()
@@ -501,7 +519,8 @@ function Preview:render()
 			ZIndex = 5,
 		}, {
 			Emulator = e(DeviceEmulator, {
-				OnResize = self.updateDeviceSize
+				OnResize = self.updateDeviceSize,
+				InitialDeviceName = self.state.deviceName,
 			})
 		}),
 

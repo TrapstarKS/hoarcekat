@@ -18,9 +18,19 @@ local DEVICES = {
 }
 
 function DeviceEmulator:init()
+	local selectedDevice = DEVICES[1]
+	if self.props.InitialDeviceName then
+		for _, device in ipairs(DEVICES) do
+			if device.Name == self.props.InitialDeviceName then
+				selectedDevice = device
+				break
+			end
+		end
+	end
+
 	self.state = {
 		isOpen = false,
-		selectedDevice = DEVICES[1], -- Fit
+		selectedDevice = selectedDevice,
 	}
 
 	self.toggleDropdown = function()
@@ -35,7 +45,16 @@ function DeviceEmulator:init()
 			isOpen = false,
 		})
 		if self.props.OnResize then
-			self.props.OnResize(device.Size)
+			self.props.OnResize(device.Size, device)
+		end
+	end
+end
+
+function DeviceEmulator:didMount()
+	-- If we started with a specific device (restored from settings), trigger the resize immediately
+	if self.props.InitialDeviceName and self.state.selectedDevice.Name ~= "Fit" then
+		if self.props.OnResize then
+			self.props.OnResize(self.state.selectedDevice.Size, self.state.selectedDevice)
 		end
 	end
 end

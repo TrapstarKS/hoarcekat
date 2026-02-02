@@ -28,3 +28,12 @@ This is a classic bug that crashes the plugin or freezes Studio.
 
 Action:
 ALWAYS guard `setState` or side-effects in `didUpdate` with a check like `if self.props.SomeValue ~= prevProps.SomeValue then ... end`.
+
+## 2024-05-22 - [Plugin Facade API Consistency]
+
+Learning:
+When using a Facade pattern to wrap the global `plugin` object (e.g., for hot-reloading contexts), it is critical to match the standard Roblox API naming conventions (PascalCase) exactly.
+Inconsistent naming (e.g., `createDockWidgetPluginGui` vs `CreateDockWidgetPluginGui`) causes runtime errors when components are written against the standard API documentation.
+
+Action:
+Ensure all mocked or proxied methods in a facade strictly follow the case and signature of the API they are mimicking.

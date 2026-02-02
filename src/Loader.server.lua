@@ -89,7 +89,7 @@ end
 --[[
 	Wrapper around plugin:CreatePluginGui
 ]]
-function PluginFacade:createDockWidgetPluginGui(name, ...)
+function PluginFacade:CreateDockWidgetPluginGui(name, ...)
 	if self._pluginGuis[name] then
 		return self._pluginGuis[name]
 	end
@@ -103,7 +103,7 @@ end
 --[[
 	Wrapper around plugin:GetMouse
 ]]
-function PluginFacade:getMouse()
+function PluginFacade:GetMouse()
 	return plugin:GetMouse()
 end
 
