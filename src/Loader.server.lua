@@ -107,6 +107,14 @@ function PluginFacade:getMouse()
 	return plugin:GetMouse()
 end
 
+function PluginFacade:GetSetting(key)
+	return plugin:GetSetting(key)
+end
+
+function PluginFacade:SetSetting(key, value)
+	plugin:SetSetting(key, value)
+end
+
 --[[
 	Sets the method to call the next time the system tries to reload
 ]]
