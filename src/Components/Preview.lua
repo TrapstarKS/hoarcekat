@@ -81,8 +81,10 @@ function Preview:didMount()
 	self:refreshPreview()
 end
 
-function Preview:didUpdate()
-	self:refreshPreview()
+function Preview:didUpdate(prevProps)
+	if prevProps.selectedStory ~= self.props.selectedStory then
+		self:refreshPreview()
+	end
 end
 
 function Preview:willUnmount()
@@ -177,6 +179,21 @@ function Preview:refreshPreview()
 
 	self.currentPreview = newStates
 	self:updateDisplay()
+
+	-- We can't setState inside refreshPreview if it's called from didUpdate
+	-- without checking conditions, otherwise we loop.
+	-- But refreshPreview IS called from didUpdate (guarded now).
+	-- And it's called from hot-reload (monkeyRequire).
+
+	-- We want to bump renderCount whenever the story is REBUILT.
+	-- If we just built it, we can safely setState if we are not in the middle of a render cycle?
+	-- Actually, setState inside didUpdate is fine IF guarded.
+	-- But refreshPreview sets state at the end.
+
+	-- The issue was: didUpdate -> refreshPreview -> setState -> didUpdate -> ...
+	-- Now didUpdate is guarded by props check.
+	-- So calling setState here should be fine, as it will trigger didUpdate,
+	-- but props won't have changed, so it won't call refreshPreview again.
 
 	self:setState({
 		renderCount = self.state.renderCount + 1

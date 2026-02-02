@@ -19,3 +19,12 @@ This creates massive input lag for the user, especially if the story involves he
 
 Action:
 Always throttle or debounce hot-reloading logic tied to user input (like script editing). A delay of 0.5s is usually sufficient to wait for the user to pause typing before attempting to reload the environment.
+
+## 2024-05-22 - [React/Roact Infinite Update Loops]
+
+Learning:
+Calling `setState` inside `didUpdate` without a conditional check (guard) causes an infinite recursion loop, as `setState` triggers another update.
+This is a classic bug that crashes the plugin or freezes Studio.
+
+Action:
+ALWAYS guard `setState` or side-effects in `didUpdate` with a check like `if self.props.SomeValue ~= prevProps.SomeValue then ... end`.
