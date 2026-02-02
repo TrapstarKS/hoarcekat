@@ -90,6 +90,25 @@ function Preview:init()
 			layoutMode = self.state.layoutMode == "Split" and "Stack" or "Split"
 		})
 	end
+
+	self.deviceScaleRef = nil
+	self.updateScale = function()
+		if not self.state.deviceSize or not self.deviceScaleRef then
+			return
+		end
+
+		local container = self.rootRef:getValue()
+		if not container then return end
+
+		-- Account for padding (5px on left/top + margin)
+		local availableSize = container.AbsoluteSize - Vector2.new(20, 20)
+		local deviceSize = self.state.deviceSize
+
+		if availableSize.X <= 0 or availableSize.Y <= 0 then return end
+
+		local scale = math.min(availableSize.X / deviceSize.X, availableSize.Y / deviceSize.Y, 1)
+		self.deviceScaleRef.Scale = scale
+	end
 end
 
 function Preview:didMount()
@@ -216,6 +235,11 @@ function Preview:refreshPreview()
 			wrapper.ClipsDescendants = true
 			wrapper.Parent = container
 
+			local scale = Instance.new("UIScale")
+			scale.Parent = wrapper
+			self.deviceScaleRef = scale
+			self.updateScale()
+
 			nextState.target.Parent = wrapper
 			nextState.target = container -- Replace target with container for display update
 		end
@@ -248,6 +272,7 @@ end
 
 function Preview:clearPreview()
 	self:cancelError()
+	self.deviceScaleRef = nil
 	local states = self.currentPreview
 	if states == nil then
 		return
@@ -376,6 +401,7 @@ function Preview:render()
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		[Roact.Ref] = self.rootRef,
+		[Roact.Change.AbsoluteSize] = self.updateScale,
 	}, {
 		UIPadding = e("UIPadding", {
 			PaddingLeft = UDim.new(0, 5),
