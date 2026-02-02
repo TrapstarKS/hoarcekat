@@ -59,6 +59,8 @@ end
 
 function Sidebar:init()
 	self.maid = Maid.new()
+	self.watcherMaid = Maid.new()
+	self.maid:GiveTask(self.watcherMaid)
 
 	for _, serviceName in ipairs(USER_SERVICES) do
 		local service = game:GetService(serviceName)
@@ -117,6 +119,8 @@ function Sidebar:checkStory(instance)
 end
 
 function Sidebar:addStoryScript(storyScript)
+	self.watcherMaid[storyScript] = nil
+
 	local instanceMaid = Maid.new()
 
 	instanceMaid:GiveTask(function()
@@ -153,14 +157,15 @@ function Sidebar:removeStoryScript(storyScript)
 	-- Bolt: Only watch ModuleScripts for name changes. Watching every Instance (Parts, Folders, etc.)
 	-- creates thousands of unnecessary connections and checks.
 	if storyScript:IsDescendantOf(game) and storyScript:IsA("ModuleScript") then
-		local changedConnection
-		changedConnection = storyScript.Changed:Connect(function()
+		self.watcherMaid[storyScript] = storyScript.Changed:Connect(function()
 			if isStoryScript(storyScript) then
 				-- We didn't use to be a story script, now we are, add us
+				self.watcherMaid[storyScript] = nil
 				self:addStoryScript(storyScript)
-				changedConnection:Disconnect()
 			end
 		end)
+	else
+		self.watcherMaid[storyScript] = nil
 	end
 end
 
