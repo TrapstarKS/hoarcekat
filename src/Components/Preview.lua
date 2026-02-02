@@ -380,7 +380,7 @@ function Preview:render()
 			PaddingTop = UDim.new(0, 5),
 		}),
 
-		DeviceEmulator = e("Frame", {
+		DeviceEmulator = DeviceEmulator and e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.5, 0, 0, 10),
@@ -467,22 +467,13 @@ function Preview:render()
 			}),
 		}),
 
-		StatsOverlay = e(StatsOverlay, {
+		StatsOverlay = StatsOverlay and e(StatsOverlay, {
 			Visible = self.state.showStats,
 			RenderCount = self.state.renderCount,
 		}),
 
-		DebugOverlay = e(DebugOverlay, {
+		DebugOverlay = DebugOverlay and e(DebugOverlay, {
 			Visible = self.state.showDebug,
-			-- For multi-preview, we might want to target specific frames or the container.
-			-- Ideally we want to outline everything inside the preview root.
-			-- self.currentPreview can be a table of states.
-			-- Let's pass the list of targets if possible, or just the whole preview root?
-			-- Actually, the DebugOverlay expects a single "Target" root to scan.
-			-- If we have multiple stories, they are parented to `self.rootRef`.
-			-- So let's pass `self.rootRef`'s value as the target?
-			-- But `self.rootRef` is the container for the Preview component itself.
-			-- Let's try passing the ref value if available.
 			Target = self.rootRef:getValue(),
 		}),
 
