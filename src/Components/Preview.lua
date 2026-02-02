@@ -403,7 +403,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleStats,
-				Image = "http://www.roblox.com/asset/?id=6031084742",
+				Image = "rbxasset://textures/ui/Performance.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -418,7 +418,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleDebug,
-				Image = "http://www.roblox.com/asset/?id=6026568210",
+				Image = "rbxasset://textures/ui/InspectMenu/icon_inspect.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
