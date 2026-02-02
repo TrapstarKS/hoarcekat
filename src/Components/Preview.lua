@@ -478,7 +478,8 @@ function Preview:render()
 		}),
 
 		-- Bolt: Handle TrackRemoved for multiple stories
-		TrackRemoved = e(Roact.createFragment, {}, (function()
+		-- Using "Folder" instead of createFragment to avoid potential version issues or nil errors
+		TrackRemoved = e("Folder", {}, (function()
 			local connections = {}
 			local stories = self.props.selectedStory
 			if type(stories) ~= "table" then stories = {stories} end
