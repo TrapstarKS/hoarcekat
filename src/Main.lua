@@ -52,7 +52,7 @@ local function Main(plugin, savedState)
 	local store = Rodux.Store.new(Reducer, savedState)
 
 	local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 0, 0)
-	local gui = plugin:createDockWidgetPluginGui("Hoarcekat" .. nameSuffix, info)
+	local gui = plugin:CreateDockWidgetPluginGui("Hoarcekat" .. nameSuffix, info)
 	gui.Name = "Hoarcekat" .. nameSuffix
 	gui.Title = "Hoarcekat " .. displaySuffix
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -67,7 +67,7 @@ local function Main(plugin, savedState)
 		store = store,
 	}, {
 		App = Roact.createElement(App, {
-			Mouse = plugin:getMouse(),
+			Mouse = plugin:GetMouse(),
 			Plugin = plugin,
 		}),
 	})
