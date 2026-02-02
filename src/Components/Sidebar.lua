@@ -348,7 +348,7 @@ function Sidebar:render()
 						BorderSizePixel = 0,
 						LayoutOrder = 2,
 						Size = UDim2.fromOffset(24, 24),
-						Image = "rbxasset://textures/ui/Input/Xbox/LeftShoulder.png", -- Placeholder/Icon for multi-select
+						Image = "rbxasset://textures/ui/TopBar/more.png", -- Valid built-in generic icon
 						ImageColor3 = theme:GetColor("MainText", "Default"),
 						[Roact.Event.Activated] = self.toggleMultiSelect,
 					}),

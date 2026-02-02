@@ -388,7 +388,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleLayout,
-				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/scroll_button_down.png" or "rbxasset://textures/ui/scroll_button_up.png", -- Placeholder for Split/Stack
+				Image = self.state.layoutMode == "Split" and "rbxasset://textures/ui/ViewToggle_Col.png" or "rbxasset://textures/ui/ViewToggle_Row.png", -- Better valid icons for layout
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -403,7 +403,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleStats,
-				Image = "rbxasset://textures/ui/Performance.png",
+				Image = "http://www.roblox.com/asset/?id=6031084742",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -418,7 +418,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleDebug,
-				Image = "rbxasset://textures/ui/InspectMenu/icon_inspect.png",
+				Image = "http://www.roblox.com/asset/?id=6026568210",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 			}),
@@ -443,8 +443,26 @@ function Preview:render()
 			Target = self.rootRef:getValue(),
 		}),
 
-		-- TODO: Multi-story TrackRemoved
-		-- For now, just track the first one or iterate if we can dynamically create elements
+		-- Bolt: Handle TrackRemoved for multiple stories
+		TrackRemoved = e(Roact.createFragment, {}, (function()
+			local connections = {}
+			local stories = self.props.selectedStory
+			if type(stories) ~= "table" then stories = {stories} end
+
+			for i, story in ipairs(stories) do
+				if story and story.Parent then
+					connections["TrackRemoved_"..i] = e(EventConnection, {
+						callback = function()
+							if not story:IsDescendantOf(game) then
+								self.props.endPreview()
+							end
+						end,
+						event = story.AncestryChanged,
+					})
+				end
+			end
+			return connections
+		end)())
 	})
 end
 
