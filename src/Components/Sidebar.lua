@@ -66,7 +66,8 @@ function Sidebar:init()
 		self:lookForStories(service)
 
 		self.maid:GiveTask(service.DescendantAdded:Connect(function(child)
-			self:lookForStories(child)
+			-- Bolt: DescendantAdded fires for every descendant, so we don't need to recursively scan (O(N^2)).
+			-- We just check the child itself.
 			self:checkStory(child)
 		end))
 	end
@@ -149,7 +150,9 @@ function Sidebar:removeStoryScript(storyScript)
 		[storyScript] = NONE,
 	})
 
-	if storyScript:IsDescendantOf(game) then
+	-- Bolt: Only watch ModuleScripts for name changes. Watching every Instance (Parts, Folders, etc.)
+	-- creates thousands of unnecessary connections and checks.
+	if storyScript:IsDescendantOf(game) and storyScript:IsA("ModuleScript") then
 		local changedConnection
 		changedConnection = storyScript.Changed:Connect(function()
 			if isStoryScript(storyScript) then
