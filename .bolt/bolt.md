@@ -37,3 +37,21 @@ Inconsistent naming (e.g., `createDockWidgetPluginGui` vs `CreateDockWidgetPlugi
 
 Action:
 Ensure all mocked or proxied methods in a facade strictly follow the case and signature of the API they are mimicking.
+
+## 2024-05-22 - [Emulator Styling Obstruction]
+
+Learning:
+When implementing device emulation (phone borders/backgrounds) in a UI previewer, these elements can become obstructive when the user switches to "Expanded" or "Pop-out" modes intended for full-screen inspection.
+Hard-coding the emulator wrapper in the render loop without checking the view mode leads to a degraded user experience where the content is clamped to a tiny box inside a large window.
+
+Action:
+Conditionally disable "Device Wrapper" or "Background" styling logic when the view mode is "Expanded" or "Popped Out", allowing the content to fill the available space naturally.
+
+## 2024-05-22 - [Roact Event Input Handling]
+
+Learning:
+`Roact.Event.Activated` usually provides the `InputObject` as the second argument, but intermediate wrapper components must explicitly pass this argument through.
+Failing to pass the `InputObject` prevents consumers from checking for modifier keys (like Ctrl) during click events, breaking expected power-user workflows like multi-selection.
+
+Action:
+Ensure all UI wrapper components (like lists or buttons) pass all arguments (including `rbx` and `input`) from their event handlers to their callbacks. Always implement fallback input checks (via `UserInputService`) if the event data might be missing or inconsistent.

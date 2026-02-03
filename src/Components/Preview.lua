@@ -57,7 +57,7 @@ function Preview:init()
 		self.expand = not self.expand
 		self.display.Parent = self.expand and CoreGui or nil
 
-		self:updateDisplay()
+		self:refreshPreview()
 	end
 
 	self.state = {
@@ -189,12 +189,9 @@ function Preview:didUpdate(prevProps, prevState)
 	if prevProps.selectedStory ~= self.props.selectedStory
 		or prevState.deviceSize ~= self.state.deviceSize
 		or prevState.layoutMode ~= self.state.layoutMode
-		or prevState.backgroundColorIndex ~= self.state.backgroundColorIndex then
+		or prevState.backgroundColorIndex ~= self.state.backgroundColorIndex
+		or prevState.isPoppedOut ~= self.state.isPoppedOut then
 		self:refreshPreview()
-	end
-
-	if prevState.isPoppedOut ~= self.state.isPoppedOut then
-		self:updateDisplay()
 	end
 end
 
@@ -310,7 +307,10 @@ function Preview:refreshPreview()
 		}
 		local bgColor = bgColors[self.state.backgroundColorIndex] or bgColors[1]
 
-		if dSize then
+		-- Bolt: Disable emulation wrapper/background when expanded or popped out to avoid obstruction
+		local isExpandedMode = self.expand or self.state.isPoppedOut
+
+		if dSize and not isExpandedMode then
 			local container = Instance.new("Frame")
 			container.Name = "DeviceContainer"
 			container.BackgroundTransparency = 1
@@ -335,7 +335,7 @@ function Preview:refreshPreview()
 
 			nextState.target.Parent = wrapper
 			nextState.target = container -- Replace target with container for display update
-		else
+		elseif not isExpandedMode then
 			-- No specific device size (Fit mode)
 			-- We still want to apply the background color behind the story
 			local container = Instance.new("Frame")

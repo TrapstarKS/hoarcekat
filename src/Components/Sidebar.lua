@@ -45,8 +45,8 @@ local function SidebarList(props)
 	for childName, child in pairs(props.Children) do
 		if typeof(child) == "Instance" then
 			contents["Instance" .. child.Name] = e(IconListItem, {
-				Activated = function()
-					props.SelectStory(child)
+				Activated = function(rbx, input)
+					props.SelectStory(child, input)
 				end,
 				OnRightClick = function()
 					props.TogglePin(child)
@@ -115,8 +115,21 @@ function Sidebar:init()
 		})
 	end
 
-	self.handleSelectStory = function(story)
-		if self.state.isMultiSelectEnabled then
+	self.handleSelectStory = function(story, input)
+		local isCtrl = false
+		if input then
+			if input:IsModifierKeyDown(Enum.ModifierKey.Ctrl) then
+				isCtrl = true
+			end
+		else
+			-- Fallback check if input isn't passed
+			local UserInputService = game:GetService("UserInputService")
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
+				isCtrl = true
+			end
+		end
+
+		if self.state.isMultiSelectEnabled or isCtrl then
 			self.props.toggleCompareStory(story)
 		else
 			self.props.setSelectedStory(story)

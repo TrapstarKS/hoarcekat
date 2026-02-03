@@ -25,7 +25,7 @@ function AutomatedScrollingFrame:render()
 	local nativeProps = {}
 	nativeProps.CanvasSize = self.canvasSize:map(function(size)
 		-- Bolt: Add buffer to ensure content isn't cut off by scrollbars or padding
-		return UDim2.fromOffset(size.X, size.Y + 20)
+		return UDim2.fromOffset(size.X, size.Y) + UDim2.fromOffset(0, 20)
 	end)
 
 	for propName, propValue in pairs(self.props.Native or {}) do
