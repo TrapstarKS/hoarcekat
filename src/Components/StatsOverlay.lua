@@ -12,16 +12,45 @@ local StatsOverlay = Roact.PureComponent:extend("StatsOverlay")
 
 function StatsOverlay:init()
 	self.maid = Maid.new()
+	self.targetMaid = Maid.new()
+	self.maid:GiveTask(self.targetMaid)
+
 	self:setState({
 		fps = 60,
 		memory = 0,
 		instances = 0,
 	})
+
+	self.instanceCount = 0
+
+	self.updateInstanceTracking = function()
+		self.targetMaid:DoCleaning()
+		self.instanceCount = 0
+
+		local target = self.props.Target
+		if not target then return end
+
+		-- Initial count
+		self.instanceCount = #target:GetDescendants()
+		self:setState({ instances = self.instanceCount })
+
+		-- Listen for changes
+		self.targetMaid:GiveTask(target.DescendantAdded:Connect(function()
+			self.instanceCount = self.instanceCount + 1
+			-- self:setState({ instances = self.instanceCount }) -- Too spammy to set state here?
+		end))
+
+		self.targetMaid:GiveTask(target.DescendantRemoving:Connect(function()
+			self.instanceCount = self.instanceCount - 1
+		end))
+	end
 end
 
 function StatsOverlay:didMount()
 	local lastUpdate = os.clock()
 	local frames = 0
+
+	self.updateInstanceTracking()
 
 	self.maid:GiveTask(RunService.RenderStepped:Connect(function()
 		frames = frames + 1
@@ -30,21 +59,22 @@ function StatsOverlay:didMount()
 			local fps = math.floor(frames / (now - lastUpdate))
 			local memory = math.floor(Stats:GetTotalMemoryUsageMb())
 
-			local instanceCount = 0
-			if self.props.Target then
-				instanceCount = #self.props.Target:GetDescendants()
-			end
-
 			self:setState({
 				fps = fps,
 				memory = memory,
-				instances = instanceCount,
+				instances = self.instanceCount,
 			})
 
 			frames = 0
 			lastUpdate = now
 		end
 	end))
+end
+
+function StatsOverlay:didUpdate(prevProps)
+	if prevProps.Target ~= self.props.Target then
+		self.updateInstanceTracking()
+	end
 end
 
 function StatsOverlay:willUnmount()
