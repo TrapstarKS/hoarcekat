@@ -37,6 +37,15 @@ function InspectorOverlay:findInstanceAt(root, pos)
 		-- Bolt: Ignore self-detection of the Inspector UI itself!
 		if instance.Name == "InspectorHighlight" or instance.Name == "InspectorTooltip" then return end
 
+		-- Bolt: Ignore internal Hoarcekat UI containers to prevent inspecting the wrapper itself
+		if instance.Name == "DeviceWrapper" or instance.Name == "DeviceContainer" or instance.Name == "FitContainer" or instance.Name == "StoryContainer" or instance.Name == "HoarcekatDisplay" then
+			-- We still want to scan their children (the user's story), but we don't want to highlight the container itself.
+			for _, child in ipairs(instance:GetChildren()) do
+				scan(child, depth + 1)
+			end
+			return
+		end
+
 		-- Debug: Check what we are scanning
 		-- print("Scanning:", instance.Name, instance.ClassName, depth)
 
@@ -201,25 +210,28 @@ function InspectorOverlay:render()
 				local midX = relX + (hSize.X / 2)
 				local midY = relY + (hSize.Y / 2)
 
+				local THICKNESS = 2 -- Bolt: Increased visibility
+
 				guides = e("Folder", {}, {
 					Top = distTop > 0 and e("Frame", {
 						Name = "GuideTop",
 						BackgroundColor3 = guideColor,
 						BorderSizePixel = 0,
-						Size = UDim2.new(0, 1, 0, distTop),
-						Position = UDim2.fromOffset(midX, relY - distTop),
+						Size = UDim2.new(0, THICKNESS, 0, distTop),
+						Position = UDim2.fromOffset(midX - (THICKNESS/2), relY - distTop),
 						ZIndex = 2147483646,
 					}, {
 						Label = e("TextLabel", {
 							Text = tostring(distTop),
 							TextColor3 = guideColor,
-							TextStrokeTransparency = 1,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
 							BackgroundTransparency = 1,
-							Size = UDim2.new(0, 20, 0, 10),
-							Position = UDim2.new(0, 2, 0.5, -5),
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0, 4, 0.5, -7),
 							TextXAlignment = Enum.TextXAlignment.Left,
-							TextSize = 10,
-							Font = Enum.Font.Code,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
 							ZIndex = 2147483647,
 						})
 					}),
@@ -227,20 +239,21 @@ function InspectorOverlay:render()
 						Name = "GuideBottom",
 						BackgroundColor3 = guideColor,
 						BorderSizePixel = 0,
-						Size = UDim2.new(0, 1, 0, distBottom),
-						Position = UDim2.fromOffset(midX, relY + hSize.Y),
+						Size = UDim2.new(0, THICKNESS, 0, distBottom),
+						Position = UDim2.fromOffset(midX - (THICKNESS/2), relY + hSize.Y),
 						ZIndex = 2147483646,
 					}, {
 						Label = e("TextLabel", {
 							Text = tostring(distBottom),
 							TextColor3 = guideColor,
-							TextStrokeTransparency = 1,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
 							BackgroundTransparency = 1,
-							Size = UDim2.new(0, 20, 0, 10),
-							Position = UDim2.new(0, 2, 0.5, -5),
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0, 4, 0.5, -7),
 							TextXAlignment = Enum.TextXAlignment.Left,
-							TextSize = 10,
-							Font = Enum.Font.Code,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
 							ZIndex = 2147483647,
 						})
 					}),
@@ -248,20 +261,21 @@ function InspectorOverlay:render()
 						Name = "GuideLeft",
 						BackgroundColor3 = guideColor,
 						BorderSizePixel = 0,
-						Size = UDim2.new(0, distLeft, 0, 1),
-						Position = UDim2.fromOffset(relX - distLeft, midY),
+						Size = UDim2.new(0, distLeft, 0, THICKNESS),
+						Position = UDim2.fromOffset(relX - distLeft, midY - (THICKNESS/2)),
 						ZIndex = 2147483646,
 					}, {
 						Label = e("TextLabel", {
 							Text = tostring(distLeft),
 							TextColor3 = guideColor,
-							TextStrokeTransparency = 1,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
 							BackgroundTransparency = 1,
-							Size = UDim2.new(0, 20, 0, 10),
-							Position = UDim2.new(0.5, -10, 0, -12),
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0.5, -15, 0, -16),
 							TextXAlignment = Enum.TextXAlignment.Center,
-							TextSize = 10,
-							Font = Enum.Font.Code,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
 							ZIndex = 2147483647,
 						})
 					}),
@@ -269,20 +283,21 @@ function InspectorOverlay:render()
 						Name = "GuideRight",
 						BackgroundColor3 = guideColor,
 						BorderSizePixel = 0,
-						Size = UDim2.new(0, distRight, 0, 1),
-						Position = UDim2.fromOffset(relX + hSize.X, midY),
+						Size = UDim2.new(0, distRight, 0, THICKNESS),
+						Position = UDim2.fromOffset(relX + hSize.X, midY - (THICKNESS/2)),
 						ZIndex = 2147483646,
 					}, {
 						Label = e("TextLabel", {
 							Text = tostring(distRight),
 							TextColor3 = guideColor,
-							TextStrokeTransparency = 1,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
 							BackgroundTransparency = 1,
-							Size = UDim2.new(0, 20, 0, 10),
-							Position = UDim2.new(0.5, -10, 0, -12),
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0.5, -15, 0, -16),
 							TextXAlignment = Enum.TextXAlignment.Center,
-							TextSize = 10,
-							Font = Enum.Font.Code,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
 							ZIndex = 2147483647,
 						})
 					})
