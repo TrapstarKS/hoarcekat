@@ -15,6 +15,7 @@ function StatsOverlay:init()
 	self:setState({
 		fps = 60,
 		memory = 0,
+		instances = 0,
 	})
 end
 
@@ -29,9 +30,15 @@ function StatsOverlay:didMount()
 			local fps = math.floor(frames / (now - lastUpdate))
 			local memory = math.floor(Stats:GetTotalMemoryUsageMb())
 
+			local instanceCount = 0
+			if self.props.Target then
+				instanceCount = #self.props.Target:GetDescendants()
+			end
+
 			self:setState({
 				fps = fps,
 				memory = memory,
+				instances = instanceCount,
 			})
 
 			frames = 0
@@ -54,7 +61,7 @@ function StatsOverlay:render()
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 		BackgroundTransparency = 0.5,
 		Position = UDim2.new(1, -50, 0, 10), -- Positioned below the toolbar buttons
-		Size = UDim2.fromOffset(120, 70),
+		Size = UDim2.fromOffset(120, 90),
 		ZIndex = 10,
 	}, {
 		UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
@@ -84,6 +91,15 @@ function StatsOverlay:render()
 			Font = Enum.Font.Code,
 			Text = string.format("MEM: %d MB", self.state.memory),
 			TextColor3 = Color3.fromRGB(200, 200, 200),
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}),
+		InstancesLabel = e("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 20),
+			Font = Enum.Font.Code,
+			Text = string.format("INST: %d", self.state.instances),
+			TextColor3 = Color3.fromRGB(255, 200, 100),
 			TextSize = 14,
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}),

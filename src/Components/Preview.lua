@@ -8,6 +8,7 @@ local EventConnection = require(script.Parent.EventConnection)
 local FloatingButton = require(script.Parent.FloatingButton)
 local StatsOverlay = require(script.Parent.StatsOverlay)
 local DebugOverlay = require(script.Parent.DebugOverlay)
+local InspectorOverlay = require(script.Parent.InspectorOverlay)
 local DeviceEmulator = require(script.Parent.DeviceEmulator)
 local Maid = require(Hoarcekat.Plugin.Maid)
 local Roact = require(Hoarcekat.Vendor.Roact)
@@ -63,6 +64,7 @@ function Preview:init()
 	self.state = {
 		showStats = false,
 		showDebug = false,
+		showInspector = false,
 		renderCount = 0,
 		layoutMode = "Stack", -- "Split" or "Stack" (Default: Stack)
 		deviceSize = nil, -- Vector2 or nil
@@ -70,6 +72,9 @@ function Preview:init()
 		isPoppedOut = false,
 		backgroundColorIndex = 1,
 		hoveredButton = nil,
+		customBgColor = nil, -- For custom settings
+		customBgImage = nil,
+		showBgControls = false,
 	}
 
 	self.setHoveredButton = function(key)
@@ -104,10 +109,35 @@ function Preview:init()
 			if successLayout and savedLayout and (savedLayout == "Split" or savedLayout == "Stack") then
 				self:setState({ layoutMode = savedLayout })
 			end
+
+			-- Load Custom BG
+			local successBg, savedBg = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_CustomBg")
+			end)
+			if successBg and savedBg then
+				-- Saved as string "r,g,b" or "imageid"
+				if savedBg:match("^%d+,%d+,%d+$") then
+					local r, g, b = savedBg:match("^(%d+),(%d+),(%d+)$")
+					self:setState({
+						customBgColor = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)),
+						backgroundColorIndex = 0 -- 0 indicates custom
+					})
+				elseif savedBg:len() > 0 then
+					self:setState({
+						customBgImage = savedBg,
+						backgroundColorIndex = 0
+					})
+				end
+			end
 		end)
 	end
 
 	self.toggleBackgroundColor = function()
+		if self.state.showBgControls then
+			self:setState({ showBgControls = false })
+			return
+		end
+
 		local colors = {
 			Color3.fromRGB(0, 0, 0),       -- Black
 			Color3.fromRGB(255, 255, 255), -- White
@@ -117,8 +147,48 @@ function Preview:init()
 
 		local nextIndex = (self.state.backgroundColorIndex % #colors) + 1
 		self:setState({
-			backgroundColorIndex = nextIndex
+			backgroundColorIndex = nextIndex,
+			customBgColor = nil,
+			customBgImage = nil,
 		})
+	end
+
+	self.openBgControls = function()
+		self:setState({
+			showBgControls = not self.state.showBgControls
+		})
+	end
+
+	self.applyCustomBg = function(text)
+		if text:match("^%d+,%d+,%d+$") then
+			local r, g, b = text:match("^(%d+),(%d+),(%d+)$")
+			local col = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))
+			self:setState({
+				customBgColor = col,
+				customBgImage = nil,
+				backgroundColorIndex = 0,
+				showBgControls = false
+			})
+			if self.props.Plugin then
+				pcall(function() self.props.Plugin:SetSetting("Hoarcekat_CustomBg", text) end)
+			end
+		else
+			-- Assume Image ID
+			local id = text
+			if not id:match("^rbxassetid://") and not id:match("^http") and id:match("^%d+$") then
+				id = "rbxassetid://" .. id
+			end
+
+			self:setState({
+				customBgImage = id,
+				customBgColor = nil,
+				backgroundColorIndex = 0,
+				showBgControls = false
+			})
+			if self.props.Plugin then
+				pcall(function() self.props.Plugin:SetSetting("Hoarcekat_CustomBg", id) end)
+			end
+		end
 	end
 
 	self.popOutWidget = nil
@@ -178,6 +248,12 @@ function Preview:init()
 	self.toggleDebug = function()
 		self:setState({
 			showDebug = not self.state.showDebug,
+		})
+	end
+
+	self.toggleInspector = function()
+		self:setState({
+			showInspector = not self.state.showInspector
 		})
 	end
 
@@ -270,10 +346,10 @@ function Preview:updateDisplay()
 	end
 
 	local parent
-	if self.state.isPoppedOut and self.popOutWidget then
-		parent = self.popOutWidget
-	elseif self.expand then
+	if self.expand then
 		parent = self.display
+	elseif self.state.isPoppedOut and self.popOutWidget then
+		parent = self.popOutWidget
 	else
 		parent = self.storyContainerRef:getValue()
 	end
@@ -338,7 +414,21 @@ function Preview:refreshPreview()
 			Color3.fromRGB(46, 46, 46),    -- Dark Grey
 			Color3.fromRGB(240, 240, 240), -- Light Grey
 		}
-		local bgColor = bgColors[self.state.backgroundColorIndex] or bgColors[1]
+		local bgColor = bgColors[self.state.backgroundColorIndex]
+		local bgImage = nil
+
+		if self.state.backgroundColorIndex == 0 then
+			if self.state.customBgColor then
+				bgColor = self.state.customBgColor
+			elseif self.state.customBgImage then
+				bgColor = Color3.new(1, 1, 1)
+				bgImage = self.state.customBgImage
+			else
+				bgColor = bgColors[1] -- Fallback
+			end
+		elseif not bgColor then
+			bgColor = bgColors[1]
+		end
 
 		-- Bolt: Disable emulation wrapper/background when expanded or popped out to avoid obstruction
 		local isExpandedMode = self.expand or self.state.isPoppedOut
@@ -349,13 +439,21 @@ function Preview:refreshPreview()
 			container.BackgroundTransparency = 1
 			container.Size = UDim2.fromScale(1, 1)
 
-			local wrapper = Instance.new("Frame")
+			local wrapper = Instance.new("ImageLabel") -- Changed to ImageLabel to support ImageID
 			wrapper.Name = "DeviceWrapper"
 			wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
 			wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
 			wrapper.Position = UDim2.fromScale(0.5, 0.5)
 
 			wrapper.BackgroundColor3 = bgColor
+			if bgImage then
+				wrapper.Image = bgImage
+				wrapper.BackgroundTransparency = 0
+			else
+				wrapper.Image = ""
+				wrapper.BackgroundTransparency = 0
+			end
+
 			wrapper.BorderSizePixel = 2
 			wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
 			wrapper.ClipsDescendants = true
@@ -371,10 +469,17 @@ function Preview:refreshPreview()
 		elseif not isExpandedMode then
 			-- No specific device size (Fit mode)
 			-- We still want to apply the background color behind the story
-			local container = Instance.new("Frame")
+			local container = Instance.new("ImageLabel") -- Changed to ImageLabel
 			container.Name = "FitContainer"
 			container.Size = UDim2.fromScale(1, 1)
 			container.BackgroundColor3 = bgColor
+			if bgImage then
+				container.Image = bgImage
+				container.BackgroundTransparency = 0
+			else
+				container.Image = ""
+				container.BackgroundTransparency = 0
+			end
 			container.BorderSizePixel = 0
 
 			nextState.target.Parent = container
@@ -643,13 +748,37 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleBackgroundColor,
+				-- Right click to open controls
+				[Roact.Event.MouseButton2Click] = self.openBgControls,
 				Image = "http://www.roblox.com/asset/?id=6026568253",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Change Background Color",
+				Tooltip = "Change Background (Right Click for Custom)",
 				OnHover = function() self.setHoveredButton("Background") end,
 				OnUnhover = function() self.clearHoveredButton("Background") end,
 			}),
+
+			Controls = self.state.showBgControls and e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(0, -5, 0, 0), -- To the left of the button
+				Size = UDim2.fromOffset(200, 40),
+				BackgroundColor3 = Color3.fromRGB(46, 46, 46),
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				ZIndex = 20,
+			}, {
+				Input = e("TextBox", {
+					Size = UDim2.new(1, -10, 1, -10),
+					Position = UDim2.fromOffset(5, 5),
+					Text = "",
+					PlaceholderText = "R,G,B or Image ID",
+					ClearTextOnFocus = false,
+					BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+					TextColor3 = Color3.new(1, 1, 1),
+					[Roact.Event.FocusLost] = function(rbx)
+						self.applyCustomBg(rbx.Text)
+					end
+				})
+			})
 		}),
 
 		StatsButton = e("Frame", {
@@ -688,9 +817,36 @@ function Preview:render()
 			}),
 		}),
 
+		InspectorButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -315, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = self.state.hoveredButton == "Inspector" and 10 or 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.toggleInspector,
+				Image = "rbxasset://textures/StudioToolbox/Search.png", -- Generic search/eye icon
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+				Tooltip = "Toggle Element Inspector",
+				OnHover = function() self.setHoveredButton("Inspector") end,
+				OnUnhover = function() self.clearHoveredButton("Inspector") end,
+			}),
+		}),
+
 		StatsOverlay = StatsOverlay and e(StatsOverlay, {
 			Visible = self.state.showStats,
 			RenderCount = self.state.renderCount,
+			Target = (function()
+				if self.expand and self.display then
+					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				else
+					return self.storyContainerRef:getValue()
+				end
+			end)(),
 		}),
 
 		StoryContainer = e("Frame", {
@@ -704,10 +860,24 @@ function Preview:render()
 		DebugOverlay = DebugOverlay and e(DebugOverlay, {
 			Visible = self.state.showDebug,
 			Target = (function()
-				if self.state.isPoppedOut and self.popOutWidget then
-					return self.popOutWidget
-				elseif self.expand and self.display then
+				if self.expand and self.display then
 					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				else
+					return self.storyContainerRef:getValue()
+				end
+			end)(),
+		}),
+
+		InspectorOverlay = InspectorOverlay and e(InspectorOverlay, {
+			Enabled = self.state.showInspector,
+			Target = (function()
+				-- Inspector should target the active display area
+				if self.expand and self.display then
+					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
 				else
 					return self.storyContainerRef:getValue()
 				end
