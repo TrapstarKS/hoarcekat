@@ -628,8 +628,8 @@ function Preview:prepareState(selectedStory)
 						local rsMeta = getmetatable(rsProxy)
 						rsMeta.__index = function(_, rsKey)
 							local realValue = service[rsKey]
+							-- Wrap signals to track connection
 							if (rsKey == "Heartbeat" or rsKey == "RenderStepped" or rsKey == "Stepped") and typeof(realValue) == "RBXScriptSignal" then
-								-- Wrap signal to track connection
 								local signalProxy = newproxy(true)
 								local signalMeta = getmetatable(signalProxy)
 								signalMeta.__index = function(_, sigKey)
@@ -643,6 +643,13 @@ function Preview:prepareState(selectedStory)
 									return realValue[sigKey]
 								end
 								return signalProxy
+							elseif typeof(realValue) == "function" then
+								-- Bolt: Fix for method calls like RunService:IsStudio().
+								-- The proxy 'self' causes the real method to fail because it expects a Service instance.
+								-- We wrap it to ignore the proxy 'self' and pass the real service.
+								return function(_, ...)
+									return realValue(service, ...)
+								end
 							end
 							return realValue
 						end
