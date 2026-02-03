@@ -614,6 +614,27 @@ function Preview:prepareState(selectedStory)
 		local env = getfenv()
 		local sandbox = {}
 
+		-- Proxy 'Instance' to track creation
+		local instanceProxy = newproxy(true)
+		local instanceMeta = getmetatable(instanceProxy)
+		instanceMeta.__index = function(_, key)
+			local realValue = Instance[key]
+			if key == "new" then
+				return function(className, parent)
+					local obj = Instance.new(className, parent)
+					state.monkeyRequireMaid:GiveTask(obj) -- Track ALL instances
+					return obj
+				end
+			elseif key == "fromExisting" then
+				return function(existing)
+					local obj = Instance.fromExisting(existing)
+					state.monkeyRequireMaid:GiveTask(obj)
+					return obj
+				end
+			end
+			return realValue
+		end
+
 		-- Proxy 'game' to intercept GetService
 		local gameProxy = newproxy(true)
 		local gameMeta = getmetatable(gameProxy)
@@ -668,6 +689,7 @@ function Preview:prepareState(selectedStory)
 			script = otherScript,
 			_G = state.monkeyGlobalTable,
 			game = gameProxy, -- Inject proxy
+			Instance = instanceProxy, -- Inject proxy
 		}, {
 			__index = env,
 		})
