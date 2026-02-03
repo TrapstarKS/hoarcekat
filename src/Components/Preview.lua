@@ -491,8 +491,11 @@ function Preview:prepareState(selectedStory)
 
 	local requireOk, result = xpcall(monkeyRequire, debug.traceback, selectedStory)
 	if not requireOk then
-		state:destroy()
-		return "Error requiring story: " .. result, nil
+		-- Bolt: Even if requiring fails, we MUST keep the maid/listeners active.
+		-- If we destroy the state here, we lose the `.Changed` event on the story script,
+		-- so the user can never "fix" the syntax error by typing.
+		-- Instead of destroying, we return the error but keep the state alive (sans target).
+		return "Error requiring story: " .. result, state
 	end
 
 	state.target = Instance.new("Frame")
@@ -552,7 +555,7 @@ function Preview:render()
 				Image = Assets.preview,
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Select in Explorer",
+				Tooltip = "Show in Explorer",
 				OnHover = function() self.setHoveredButton("Select") end,
 				OnUnhover = function() self.clearHoveredButton("Select") end,
 			}),
@@ -607,7 +610,7 @@ function Preview:render()
 				Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Toggle Layout",
+				Tooltip = "Change Multi-View Layout. (" .. self.state.layoutMode .. ")",
 				OnHover = function() self.setHoveredButton("Layout") end,
 				OnUnhover = function() self.clearHoveredButton("Layout") end,
 			}),
@@ -643,7 +646,7 @@ function Preview:render()
 				Image = "http://www.roblox.com/asset/?id=6031084742",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Toggle Stats",
+				Tooltip = "Toggle Stats Performance",
 				OnHover = function() self.setHoveredButton("Stats") end,
 				OnUnhover = function() self.clearHoveredButton("Stats") end,
 			}),

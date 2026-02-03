@@ -382,7 +382,7 @@ function Sidebar:render()
 						[Roact.Event.MouseLeave] = self.unhoverMultiSelect,
 					}, {
 						Tooltip = e(Tooltip, {
-							Text = "Toggle Multi-Select",
+							Text = "Toggle Multi-View",
 							Visible = self.state.multiSelectHovered,
 						}),
 					}),
