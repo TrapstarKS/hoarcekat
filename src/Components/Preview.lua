@@ -609,14 +609,60 @@ function Preview:prepareState(selectedStory)
 			return
 		end
 
+		-- Bolt: Create a sandbox to intercept potentially leaking connections (RunService, etc)
+		-- We need to proxy global services.
+		local env = getfenv()
+		local sandbox = {}
+
+		-- Proxy 'game' to intercept GetService
+		local gameProxy = newproxy(true)
+		local gameMeta = getmetatable(gameProxy)
+
+		gameMeta.__index = function(_, key)
+			if key == "GetService" then
+				return function(_, serviceName)
+					local service = game:GetService(serviceName)
+					-- Intercept RunService to track connections
+					if serviceName == "RunService" then
+						local rsProxy = newproxy(true)
+						local rsMeta = getmetatable(rsProxy)
+						rsMeta.__index = function(_, rsKey)
+							local realValue = service[rsKey]
+							if (rsKey == "Heartbeat" or rsKey == "RenderStepped" or rsKey == "Stepped") and typeof(realValue) == "RBXScriptSignal" then
+								-- Wrap signal to track connection
+								local signalProxy = newproxy(true)
+								local signalMeta = getmetatable(signalProxy)
+								signalMeta.__index = function(_, sigKey)
+									if sigKey == "Connect" then
+										return function(_, callback)
+											local conn = realValue:Connect(callback)
+											state.monkeyRequireMaid:GiveTask(conn) -- Track it!
+											return conn
+										end
+									end
+									return realValue[sigKey]
+								end
+								return signalProxy
+							end
+							return realValue
+						end
+						return rsProxy
+					end
+					return service
+				end
+			end
+			return game[key]
+		end
+
 		local fenv = setmetatable({
 			require = function(requiringScript)
 				return monkeyRequire(requiringScript, otherScript)
 			end,
 			script = otherScript,
 			_G = state.monkeyGlobalTable,
+			game = gameProxy, -- Inject proxy
 		}, {
-			__index = getfenv(),
+			__index = env,
 		})
 
 		setfenv(result, fenv)
