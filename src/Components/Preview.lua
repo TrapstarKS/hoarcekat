@@ -932,7 +932,8 @@ function Preview:render()
 				Image = "rbxasset://textures/StudioToolbox/Search.png", -- Generic search/eye icon
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Toggle Element Inspector",
+				Tooltip = "Inspector: " .. (self.state.showInspector and "ON" or "OFF"),
+				ImageColor3 = self.state.showInspector and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
 				OnHover = function() self.setHoveredButton("Inspector") end,
 				OnUnhover = function() self.clearHoveredButton("Inspector") end,
 			}),

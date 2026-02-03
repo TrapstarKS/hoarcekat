@@ -36,20 +36,35 @@ function InspectorOverlay:findInstanceAt(root, pos)
 	local function scan(instance, depth)
 		-- Bolt: Ignore self-detection of the Inspector UI itself!
 		if instance.Name == "InspectorHighlight" or instance.Name == "InspectorTooltip" then return end
-		if not instance:IsA("GuiObject") or not instance.Visible then return end
+
+		-- Debug: Check what we are scanning
+		-- print("Scanning:", instance.Name, instance.ClassName, depth)
+
+		-- Handle ScreenGui/Roots which are not GuiObjects but have children
+		if not instance:IsA("GuiObject") then
+			if instance:IsA("ScreenGui") or instance:IsA("Folder") or instance:IsA("Frame") or instance == root then
+				for _, child in ipairs(instance:GetChildren()) do
+					scan(child, depth + 1)
+				end
+			end
+			return
+		end
+
+		if not instance.Visible then return end
 
 		local absPos = instance.AbsolutePosition
 		local absSize = instance.AbsoluteSize
+
+		-- print("Checking:", instance.Name, "Pos:", absPos, "Size:", absSize, "Mouse:", pos)
 
 		if pos.X >= absPos.X and pos.X <= absPos.X + absSize.X and
 		   pos.Y >= absPos.Y and pos.Y <= absPos.Y + absSize.Y then
 
 			-- Basic ZIndex check. We prefer deeper elements (children on top of parents)
-			-- Bolt: Also prefer higher ZIndex if depth is equal?
-			-- Actually, the render order (depth) usually defines visibility.
 			if depth >= bestDepth then
 				bestCandidate = instance
 				bestDepth = depth
+				-- print("New Candidate:", instance.Name)
 			end
 
 			for _, child in ipairs(instance:GetChildren()) do
