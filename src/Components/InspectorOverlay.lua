@@ -97,9 +97,15 @@ function InspectorOverlay:findInstanceAt(root, pos)
 end
 
 function InspectorOverlay:didMount()
+	self.lastUpdate = 0
 	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			self.updateHover(input)
+			-- Bolt: Throttle inspector updates to ~30 FPS to save CPU during rapid mouse movement.
+			local now = os.clock()
+			if now - self.lastUpdate > 0.033 then
+				self.lastUpdate = now
+				self.updateHover(input)
+			end
 		end
 	end))
 end

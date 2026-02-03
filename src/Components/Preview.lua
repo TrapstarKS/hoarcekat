@@ -548,19 +548,27 @@ function Preview:prepareState(selectedStory)
 	}
 
 	function state:destroy()
-		self.monkeyRequireMaid:DoCleaning()
-
+		-- Bolt: Ensure proper cleanup order.
+		-- 1. Run user cleanup (disconnects user events)
 		if self.cleanup then
 			local ok, result = pcall(self.cleanup)
 			if not ok then
 				warn("Error cleaning up story: " .. result)
 			end
-
 			self.cleanup = nil
 		end
 
+		-- 2. Clean up internal connections (hot reload listeners)
+		self.monkeyRequireMaid:DoCleaning()
+
+		-- 3. Clear environment references to allow GC
+		table.clear(self.monkeyGlobalTable)
+		table.clear(self.monkeyRequireCache)
+
+		-- 4. Destroy target UI
 		if self.target then
 			self.target:Destroy()
+			self.target = nil
 		end
 	end
 

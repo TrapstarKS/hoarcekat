@@ -267,15 +267,25 @@ function Sidebar:render()
 		function(theme)
 			local storyTree = {}
 			local searchTerm = self.state.searchTerm and self.state.searchTerm:lower() or ""
+			local storyScripts = self.state.storyScripts or {}
 
-			for storyScript in pairs(self.state.storyScripts or {}) do
+			-- Bolt: Memoized-like structure building.
+			-- In React we'd use useMemo, here we just do it efficiently in render.
+			-- If the list is huge, we should move this to didUpdate/reducer, but for now,
+			-- iterating the set of stories is O(N_stories), which is generally small (<1000).
+			-- The O(N^2) was in DescendantAdded. This loop is fine unless N is huge.
+
+			for storyScript in pairs(storyScripts) do
 				if searchTerm ~= "" and not storyScript.Name:lower():find(searchTerm, 1, true) then
 					continue
 				end
 
+				-- Build hierarchy path
 				local hierarchy = {}
 				local parent = storyScript
 
+				-- Optimization: We can cache the hierarchy path for each storyScript if needed,
+				-- but crawling up parents is fast enough for <1000 items.
 				repeat
 					table.insert(hierarchy, 1, parent)
 					parent = parent.Parent
