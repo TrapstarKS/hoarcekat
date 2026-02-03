@@ -537,6 +537,7 @@ function Preview:render()
 				Image = Assets.preview,
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Select in Explorer",
 			}),
 		}),
 
@@ -552,6 +553,7 @@ function Preview:render()
 				Image = "rbxasset://textures/ui/VR/toggle2D.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Expand / Collapse",
 			}),
 		}),
 
@@ -568,6 +570,7 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
+				Tooltip = "Pop Out Window",
 			}),
 		}),
 
@@ -583,6 +586,7 @@ function Preview:render()
 				Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Toggle Layout",
 			}),
 		}),
 
@@ -598,6 +602,7 @@ function Preview:render()
 				Image = "http://www.roblox.com/asset/?id=6026568253",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Change Background Color",
 			}),
 		}),
 
@@ -613,6 +618,7 @@ function Preview:render()
 				Image = "http://www.roblox.com/asset/?id=6031084742",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Toggle Stats",
 			}),
 		}),
 
@@ -628,6 +634,7 @@ function Preview:render()
 				Image = "http://www.roblox.com/asset/?id=6026568210",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Toggle Debug Overlay",
 			}),
 		}),
 

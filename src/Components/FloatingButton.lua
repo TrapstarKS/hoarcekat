@@ -3,6 +3,7 @@ local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
 local Assets = require(Hoarcekat.Plugin.Assets)
 local Roact = require(Hoarcekat.Vendor.Roact)
 local StudioThemeAccessor = require(script.Parent.StudioThemeAccessor)
+local Tooltip = require(script.Parent.Tooltip)
 
 local e = Roact.createElement
 
@@ -65,6 +66,12 @@ function FloatingButton:render()
 					Image = props.Image,
 					Position = UDim2.fromScale(0.5, 0.5),
 					Size = UDim2.new(props.ImageSize, props.ImageSize),
+					ImageColor3 = props.ImageColor3 or nil,
+				}),
+
+				Tooltip = props.Tooltip and e(Tooltip, {
+					Text = props.Tooltip,
+					Visible = self.hovered,
 				}),
 			})
 		end,
