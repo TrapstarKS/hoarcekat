@@ -64,7 +64,7 @@ function Preview:init()
 		showStats = false,
 		showDebug = false,
 		renderCount = 0,
-		layoutMode = "Split", -- "Split" or "Stack"
+		layoutMode = "Stack", -- "Split" or "Stack" (Default: Stack)
 		deviceSize = nil, -- Vector2 or nil
 		deviceName = nil, -- Saved device name
 		isPoppedOut = false,
@@ -86,14 +86,25 @@ function Preview:init()
 		end
 	end
 
-	-- Load device setting
+	-- Load settings
 	if self.props.Plugin then
-		local success, savedName = pcall(function()
-			return self.props.Plugin:GetSetting("Hoarcekat_DeviceName")
+		task.spawn(function()
+			-- Load Device Name
+			local successDevice, savedName = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_DeviceName")
+			end)
+			if successDevice and savedName then
+				self:setState({ deviceName = savedName })
+			end
+
+			-- Load Layout Mode
+			local successLayout, savedLayout = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_LayoutMode")
+			end)
+			if successLayout and savedLayout and (savedLayout == "Split" or savedLayout == "Stack") then
+				self:setState({ layoutMode = savedLayout })
+			end
 		end)
-		if success and savedName then
-			self.state.deviceName = savedName
-		end
 	end
 
 	self.toggleBackgroundColor = function()
@@ -171,9 +182,16 @@ function Preview:init()
 	end
 
 	self.toggleLayout = function()
+		local newMode = self.state.layoutMode == "Split" and "Stack" or "Split"
 		self:setState({
-			layoutMode = self.state.layoutMode == "Split" and "Stack" or "Split"
+			layoutMode = newMode
 		})
+
+		if self.props.Plugin then
+			pcall(function()
+				self.props.Plugin:SetSetting("Hoarcekat_LayoutMode", newMode)
+			end)
+		end
 	end
 
 	self.deviceScaleRef = nil
