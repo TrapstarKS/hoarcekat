@@ -144,10 +144,17 @@ function InspectorOverlay:render()
 
 	local highlight = nil
 	local tooltip = nil
+	local guides = nil
 
 	if hi and target then
-		local tAbs = target.AbsolutePosition
+		-- Bolt: Safely get AbsolutePosition for Target (handles ScreenGui/PluginGui)
+		local tAbs = Vector2.new(0, 0)
+		if target:IsA("GuiObject") then
+			tAbs = target.AbsolutePosition
+		end
+
 		local hAbs = hi.AbsolutePosition
+		local hSize = hi.AbsoluteSize
 		local relX = hAbs.X - tAbs.X
 		local relY = hAbs.Y - tAbs.Y
 
@@ -157,10 +164,159 @@ function InspectorOverlay:render()
 			BackgroundColor3 = Color3.fromRGB(0, 170, 255),
 			BorderSizePixel = 2,
 			BorderColor3 = Color3.fromRGB(0, 170, 255),
-			Size = UDim2.fromOffset(hi.AbsoluteSize.X, hi.AbsoluteSize.Y),
+			Size = UDim2.fromOffset(hSize.X, hSize.Y),
 			Position = UDim2.fromOffset(relX, relY),
 			ZIndex = 2147483647, -- Max ZIndex to ensure it's on top
 		})
+
+		-- Smart Guides Logic
+		local parent = hi.Parent
+		if parent and (parent:IsA("GuiObject") or parent == target) then
+			local pAbs = Vector2.new(0, 0)
+			local pSize = Vector2.new(0, 0)
+
+			if parent:IsA("GuiObject") then
+				pAbs = parent.AbsolutePosition
+				pSize = parent.AbsoluteSize
+			elseif parent == target and target:IsA("GuiObject") then
+				pAbs = target.AbsolutePosition
+				pSize = target.AbsoluteSize
+			elseif parent == target then
+				-- Target is LayerCollector, assume full screen?
+				-- Hard to know exact size without AbsoluteSize API on ScreenGui (it exists on ScreenGui.AbsoluteSize in newer API but safe to fallback)
+				if target:IsA("ScreenGui") or target:IsA("DockWidgetPluginGui") then
+					pAbs = Vector2.new(0, 0) -- Relative to target root
+					-- We can't easily guess size, so maybe skip guides or rely on screen bounds?
+					-- Let's skip guides if parent is a Root Layer to avoid visual clutter/bugs
+					parent = nil
+				end
+			end
+
+			if parent then
+				local distTop = math.floor(hAbs.Y - pAbs.Y)
+				local distLeft = math.floor(hAbs.X - pAbs.X)
+				local distRight = math.floor((pAbs.X + pSize.X) - (hAbs.X + hSize.X))
+				local distBottom = math.floor((pAbs.Y + pSize.Y) - (hAbs.Y + hSize.Y))
+
+				local function createGuide(name, size, pos, text)
+					return e("Frame", {
+						Name = "Guide_" .. name,
+						BackgroundColor3 = Color3.fromRGB(255, 100, 100),
+						BorderSizePixel = 0,
+						Size = size,
+						Position = pos,
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = text,
+							TextColor3 = Color3.fromRGB(255, 100, 100),
+							TextStrokeTransparency = 0,
+							BackgroundTransparency = 1,
+							Size = UDim2.fromScale(1, 1),
+							Position = UDim2.fromOffset(5, 5), -- Offset slightly
+							TextSize = 10,
+							Font = Enum.Font.Code,
+							ZIndex = 2147483647,
+						})
+					})
+				end
+
+				local guideColor = Color3.fromRGB(255, 80, 80)
+				local thin = 1
+
+				-- Render Lines extending from element to parent edges
+				-- Top Line (Center of element up to parent top)
+				local midX = relX + (hSize.X / 2)
+				local midY = relY + (hSize.Y / 2)
+
+				guides = e("Folder", {}, {
+					Top = distTop > 0 and e("Frame", {
+						Name = "GuideTop",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, 1, 0, distTop),
+						Position = UDim2.fromOffset(midX, relY - distTop),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distTop),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 1,
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 20, 0, 10),
+							Position = UDim2.new(0, 2, 0.5, -5),
+							TextXAlignment = Enum.TextXAlignment.Left,
+							TextSize = 10,
+							Font = Enum.Font.Code,
+							ZIndex = 2147483647,
+						})
+					}),
+					Bottom = distBottom > 0 and e("Frame", {
+						Name = "GuideBottom",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, 1, 0, distBottom),
+						Position = UDim2.fromOffset(midX, relY + hSize.Y),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distBottom),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 1,
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 20, 0, 10),
+							Position = UDim2.new(0, 2, 0.5, -5),
+							TextXAlignment = Enum.TextXAlignment.Left,
+							TextSize = 10,
+							Font = Enum.Font.Code,
+							ZIndex = 2147483647,
+						})
+					}),
+					Left = distLeft > 0 and e("Frame", {
+						Name = "GuideLeft",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, distLeft, 0, 1),
+						Position = UDim2.fromOffset(relX - distLeft, midY),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distLeft),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 1,
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 20, 0, 10),
+							Position = UDim2.new(0.5, -10, 0, -12),
+							TextXAlignment = Enum.TextXAlignment.Center,
+							TextSize = 10,
+							Font = Enum.Font.Code,
+							ZIndex = 2147483647,
+						})
+					}),
+					Right = distRight > 0 and e("Frame", {
+						Name = "GuideRight",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, distRight, 0, 1),
+						Position = UDim2.fromOffset(relX + hSize.X, midY),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distRight),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 1,
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 20, 0, 10),
+							Position = UDim2.new(0.5, -10, 0, -12),
+							TextXAlignment = Enum.TextXAlignment.Center,
+							TextSize = 10,
+							Font = Enum.Font.Code,
+							ZIndex = 2147483647,
+						})
+					})
+				})
+			end
+		end
 
 		tooltip = e("Frame", {
 			Name = "InspectorTooltip", -- Bolt: Key for ignoring in scan
@@ -170,48 +326,6 @@ function InspectorOverlay:render()
 			Position = UDim2.fromOffset(relX, relY - 80), -- Above element
 			ZIndex = 2147483647,
 		}, {
-			UIPadding = e("UIPadding", {
-				PaddingTop = UDim.new(0, 5),
-				PaddingBottom = UDim.new(0, 5),
-				PaddingLeft = UDim.new(0, 5),
-				PaddingRight = UDim.new(0, 5),
-			}),
-			UIListLayout = e("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, 2),
-			}),
-			NameLabel = e("TextLabel", {
-				Text = props.Name .. " (" .. props.ClassName .. ")",
-				TextColor3 = Color3.fromRGB(255, 255, 255),
-				Font = Enum.Font.SourceSansBold,
-				TextSize = 14,
-				AutomaticSize = Enum.AutomaticSize.XY,
-				BackgroundTransparency = 1,
-				LayoutOrder = 1,
-				TextXAlignment = Enum.TextXAlignment.Left,
-			}),
-			SizeLabel = e("TextLabel", {
-				Text = "Size: " .. props.Size,
-				TextColor3 = Color3.fromRGB(200, 200, 200),
-				Font = Enum.Font.Code,
-				TextSize = 12,
-				AutomaticSize = Enum.AutomaticSize.XY,
-				BackgroundTransparency = 1,
-				LayoutOrder = 2,
-				TextXAlignment = Enum.TextXAlignment.Left,
-			}),
-			PadLabel = e("TextLabel", {
-				Text = "Pad: " .. props.Padding,
-				TextColor3 = Color3.fromRGB(200, 200, 200),
-				Font = Enum.Font.Code,
-				TextSize = 12,
-				AutomaticSize = Enum.AutomaticSize.XY,
-				BackgroundTransparency = 1,
-				LayoutOrder = 3,
-				TextXAlignment = Enum.TextXAlignment.Left,
-			}),
-		})
-	end
 
 	-- We render the highlight inside a FullScreen ScreenGui or just a top-level Frame?
 	-- Currently Preview renders things inside 'display' or 'storyContainer'.
@@ -224,6 +338,7 @@ function InspectorOverlay:render()
 			target = self.props.Target,
 		}, {
 			Highlight = highlight,
+			Guides = guides,
 			Tooltip = tooltip
 		})
 	else
