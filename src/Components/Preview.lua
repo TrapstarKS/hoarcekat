@@ -723,6 +723,11 @@ function Preview:prepareState(selectedStory)
 	state.target.Name = "Preview"
 	state.target.BackgroundTransparency = 1
 	state.target.Size = UDim2.fromScale(1, 1)
+	-- Bolt: Ensure the Preview frame doesn't block input for the Inspector
+	-- But it must allow child elements to receive input.
+	-- Frames by default block input if Active is true or if they have a background (but transparency=1 usually passes through).
+	-- Just to be safe for Click-to-Select.
+	state.target.Active = false
 
 	local execOk, cleanup = xpcall(function()
 		return result(state.target)

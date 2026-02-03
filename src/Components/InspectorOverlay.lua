@@ -1,6 +1,7 @@
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local Selection = game:GetService("Selection")
 
 local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
 
@@ -22,25 +23,7 @@ function InspectorOverlay:init()
 		local target = self.props.Target
 		if not target then return end
 
-		-- Use PlayerGui:GetGuiObjectsAtPosition for standard UI scanning
-		-- Since this is running in Plugin, we might need a different strategy depending on where 'target' is.
-		-- However, GetGuiObjectsAtPosition works relative to the screen.
-
 		local mousePos = input.Position
-		local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-		if not playerGui then
-			-- In edit mode, we might not have PlayerGui readily available for this API if checking inside a widget.
-			-- Fallback: Recursive raycast/check is expensive.
-			-- Actually, CoreGui has generic GetGuiObjectsAtPosition methods? No.
-			-- If 'target' is in CoreGui (Expanded), `playerGui:GetGuiObjectsAtPosition` usually ignores CoreGui.
-			-- If 'target' is in Widget, it's definitely ignored.
-
-			-- Robust solution: Recursively check 'target' descendants for "Contains Point".
-			-- Since we only care about the previewed story, this is actually faster than scanning the whole screen.
-			self:findInstanceAt(target, Vector2.new(mousePos.X, mousePos.Y))
-			return
-		end
-
 		self:findInstanceAt(target, Vector2.new(mousePos.X, mousePos.Y))
 	end
 end
@@ -51,6 +34,8 @@ function InspectorOverlay:findInstanceAt(root, pos)
 	local bestDepth = -1
 
 	local function scan(instance, depth)
+		-- Bolt: Ignore self-detection of the Inspector UI itself!
+		if instance.Name == "InspectorHighlight" or instance.Name == "InspectorTooltip" then return end
 		if not instance:IsA("GuiObject") or not instance.Visible then return end
 
 		local absPos = instance.AbsolutePosition
@@ -59,8 +44,9 @@ function InspectorOverlay:findInstanceAt(root, pos)
 		if pos.X >= absPos.X and pos.X <= absPos.X + absSize.X and
 		   pos.Y >= absPos.Y and pos.Y <= absPos.Y + absSize.Y then
 
-			-- Basic ZIndex check (Roblox uses GlobalZIndex for Sibling, but locally ZIndex matters)
-			-- We prefer deeper elements (children on top of parents)
+			-- Basic ZIndex check. We prefer deeper elements (children on top of parents)
+			-- Bolt: Also prefer higher ZIndex if depth is equal?
+			-- Actually, the render order (depth) usually defines visibility.
 			if depth >= bestDepth then
 				bestCandidate = instance
 				bestDepth = depth
@@ -75,6 +61,9 @@ function InspectorOverlay:findInstanceAt(root, pos)
 	scan(root, 0)
 
 	if bestCandidate ~= self.state.hoveredInstance then
+		-- Debug print (Uncomment if needed)
+		-- if bestCandidate then warn("Inspector Hover:", bestCandidate:GetFullName()) end
+
 		if bestCandidate then
 			local padding = bestCandidate:FindFirstChildWhichIsA("UIPadding")
 			self:setState({
@@ -98,13 +87,30 @@ end
 
 function InspectorOverlay:didMount()
 	self.lastUpdate = 0
+
+	-- Mouse Movement (Hover)
 	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
+		if not self.props.Enabled then return end
+
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			-- Bolt: Throttle inspector updates to ~30 FPS to save CPU during rapid mouse movement.
+			-- Bolt: Throttle inspector updates to ~30 FPS to save CPU
 			local now = os.clock()
 			if now - self.lastUpdate > 0.033 then
 				self.lastUpdate = now
 				self.updateHover(input)
+			end
+		end
+	end))
+
+	-- Click (Select)
+	self.maid:GiveTask(UserInputService.InputBegan:Connect(function(input)
+		if not self.props.Enabled then return end
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if self.state.hoveredInstance and self.state.hoveredInstance ~= Roact.None then
+				-- Bolt: Feature - Click to select in Explorer
+				Selection:Set({self.state.hoveredInstance})
+				-- print("Selected:", self.state.hoveredInstance)
 			end
 		end
 	end))
@@ -131,21 +137,23 @@ function InspectorOverlay:render()
 		local relY = hAbs.Y - tAbs.Y
 
 		highlight = e("Frame", {
+			Name = "InspectorHighlight", -- Bolt: Key for ignoring in scan
 			BackgroundTransparency = 0.8,
 			BackgroundColor3 = Color3.fromRGB(0, 170, 255),
 			BorderSizePixel = 2,
 			BorderColor3 = Color3.fromRGB(0, 170, 255),
 			Size = UDim2.fromOffset(hi.AbsoluteSize.X, hi.AbsoluteSize.Y),
 			Position = UDim2.fromOffset(relX, relY),
-			ZIndex = 100, -- On top of everything
+			ZIndex = 2147483647, -- Max ZIndex to ensure it's on top
 		})
 
 		tooltip = e("Frame", {
+			Name = "InspectorTooltip", -- Bolt: Key for ignoring in scan
 			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
 			BorderColor3 = Color3.fromRGB(100, 100, 100),
 			Position = UDim2.fromOffset(relX, relY - 80), -- Above element
-			ZIndex = 101,
+			ZIndex = 2147483647,
 		}, {
 			UIPadding = e("UIPadding", {
 				PaddingTop = UDim.new(0, 5),
