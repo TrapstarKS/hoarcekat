@@ -185,10 +185,12 @@ function InspectorOverlay:render()
 	-- Let's render it as a sibling of the target in Preview.lua, effectively covering it if ZIndex is high.
 
 	if self.props.Target then
-		return Roact.createPortal({
+		return e(Roact.Portal, {
+			target = self.props.Target,
+		}, {
 			Highlight = highlight,
 			Tooltip = tooltip
-		}, self.props.Target)
+		})
 	else
 		return nil
 	end

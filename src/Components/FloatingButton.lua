@@ -65,6 +65,7 @@ function FloatingButton:render()
 				[Roact.Event.MouseButton1Down] = self.press,
 				[Roact.Event.MouseButton1Up] = self.unpress,
 				[Roact.Event.Activated] = props.Activated,
+				[Roact.Event.MouseButton2Click] = props[Roact.Event.MouseButton2Click],
 			}, {
 				Image = e("ImageLabel", {
 					AnchorPoint = Vector2.new(0.5, 0.5),

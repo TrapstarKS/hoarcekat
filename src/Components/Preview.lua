@@ -362,6 +362,13 @@ function Preview:updateDisplay()
 end
 
 function Preview:refreshPreview()
+	-- Bolt: Debounce refresh to avoid rapid reloads (infinite loops)
+	local now = os.clock()
+	if self.lastRefreshTime and (now - self.lastRefreshTime < 0.1) then
+		return
+	end
+	self.lastRefreshTime = now
+
 	-- Support list of stories or single story
 	local selectedStories = self.props.selectedStory
 	if type(selectedStories) ~= "table" or selectedStories.ClassName then
