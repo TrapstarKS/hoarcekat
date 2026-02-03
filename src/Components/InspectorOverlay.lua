@@ -119,18 +119,24 @@ function InspectorOverlay:render()
 
 	local hi = self.state.hoveredInstance
 	local props = self.state.hoveredProps
+	local target = self.props.Target
 
 	local highlight = nil
 	local tooltip = nil
 
-	if hi then
+	if hi and target then
+		local tAbs = target.AbsolutePosition
+		local hAbs = hi.AbsolutePosition
+		local relX = hAbs.X - tAbs.X
+		local relY = hAbs.Y - tAbs.Y
+
 		highlight = e("Frame", {
 			BackgroundTransparency = 0.8,
 			BackgroundColor3 = Color3.fromRGB(0, 170, 255),
 			BorderSizePixel = 2,
 			BorderColor3 = Color3.fromRGB(0, 170, 255),
 			Size = UDim2.fromOffset(hi.AbsoluteSize.X, hi.AbsoluteSize.Y),
-			Position = UDim2.fromOffset(hi.AbsolutePosition.X, hi.AbsolutePosition.Y),
+			Position = UDim2.fromOffset(relX, relY),
 			ZIndex = 100, -- On top of everything
 		})
 
@@ -138,7 +144,7 @@ function InspectorOverlay:render()
 			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
 			BorderColor3 = Color3.fromRGB(100, 100, 100),
-			Position = UDim2.fromOffset(hi.AbsolutePosition.X, hi.AbsolutePosition.Y - 80), -- Above element
+			Position = UDim2.fromOffset(relX, relY - 80), -- Above element
 			ZIndex = 101,
 		}, {
 			UIPadding = e("UIPadding", {

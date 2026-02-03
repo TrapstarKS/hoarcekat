@@ -638,10 +638,15 @@ function Preview:prepareState(selectedStory)
 		-- Proxy 'game' to intercept GetService
 		local gameProxy = newproxy(true)
 		local gameMeta = getmetatable(gameProxy)
+		local serviceCache = {} -- Bolt: Cache services to avoid creating new proxies every call
 
 		gameMeta.__index = function(_, key)
 			if key == "GetService" then
 				return function(_, serviceName)
+					if serviceCache[serviceName] then
+						return serviceCache[serviceName]
+					end
+
 					local service = game:GetService(serviceName)
 					-- Intercept RunService to track connections
 					if serviceName == "RunService" then
@@ -674,8 +679,11 @@ function Preview:prepareState(selectedStory)
 							end
 							return realValue
 						end
+						serviceCache[serviceName] = rsProxy
 						return rsProxy
 					end
+
+					serviceCache[serviceName] = service
 					return service
 				end
 			end
@@ -925,19 +933,31 @@ function Preview:render()
 			}),
 		}),
 
-		StatsOverlay = StatsOverlay and e(StatsOverlay, {
-			Visible = self.state.showStats,
-			RenderCount = self.state.renderCount,
-			Target = (function()
-				if self.expand and self.display then
-					return self.display
-				elseif self.state.isPoppedOut and self.popOutWidget then
-					return self.popOutWidget
-				else
-					return self.storyContainerRef:getValue()
-				end
-			end)(),
-		}),
+		StatsOverlay = (function()
+			if not StatsOverlay then return nil end
+
+			local target = self.storyContainerRef:getValue()
+			local portalTarget = nil
+
+			if self.expand and self.display then
+				target = self.display
+				portalTarget = self.display
+			elseif self.state.isPoppedOut and self.popOutWidget then
+				target = self.popOutWidget
+				portalTarget = self.popOutWidget
+			end
+
+			local overlay = e(StatsOverlay, {
+				Visible = self.state.showStats,
+				RenderCount = self.state.renderCount,
+				Target = target,
+			})
+
+			if portalTarget then
+				return e(Roact.Portal, { target = portalTarget }, { Overlay = overlay })
+			end
+			return overlay
+		end)(),
 
 		StoryContainer = e("Frame", {
 			Name = "StoryContainer",
