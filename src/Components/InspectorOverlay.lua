@@ -183,10 +183,8 @@ function InspectorOverlay:render()
 				pSize = target.AbsoluteSize
 			elseif parent == target then
 				-- Target is LayerCollector, assume full screen?
-				-- Hard to know exact size without AbsoluteSize API on ScreenGui (it exists on ScreenGui.AbsoluteSize in newer API but safe to fallback)
 				if target:IsA("ScreenGui") or target:IsA("DockWidgetPluginGui") then
 					pAbs = Vector2.new(0, 0) -- Relative to target root
-					-- We can't easily guess size, so maybe skip guides or rely on screen bounds?
 					-- Let's skip guides if parent is a Root Layer to avoid visual clutter/bugs
 					parent = nil
 				end
@@ -198,34 +196,8 @@ function InspectorOverlay:render()
 				local distRight = math.floor((pAbs.X + pSize.X) - (hAbs.X + hSize.X))
 				local distBottom = math.floor((pAbs.Y + pSize.Y) - (hAbs.Y + hSize.Y))
 
-				local function createGuide(name, size, pos, text)
-					return e("Frame", {
-						Name = "Guide_" .. name,
-						BackgroundColor3 = Color3.fromRGB(255, 100, 100),
-						BorderSizePixel = 0,
-						Size = size,
-						Position = pos,
-						ZIndex = 2147483646,
-					}, {
-						Label = e("TextLabel", {
-							Text = text,
-							TextColor3 = Color3.fromRGB(255, 100, 100),
-							TextStrokeTransparency = 0,
-							BackgroundTransparency = 1,
-							Size = UDim2.fromScale(1, 1),
-							Position = UDim2.fromOffset(5, 5), -- Offset slightly
-							TextSize = 10,
-							Font = Enum.Font.Code,
-							ZIndex = 2147483647,
-						})
-					})
-				end
-
 				local guideColor = Color3.fromRGB(255, 80, 80)
-				local thin = 1
 
-				-- Render Lines extending from element to parent edges
-				-- Top Line (Center of element up to parent top)
 				local midX = relX + (hSize.X / 2)
 				local midY = relY + (hSize.Y / 2)
 
@@ -326,12 +298,48 @@ function InspectorOverlay:render()
 			Position = UDim2.fromOffset(relX, relY - 80), -- Above element
 			ZIndex = 2147483647,
 		}, {
-
-	-- We render the highlight inside a FullScreen ScreenGui or just a top-level Frame?
-	-- Currently Preview renders things inside 'display' or 'storyContainer'.
-	-- To guarantee this is ON TOP, we should probably wrap it in a ScreenGui if possible,
-	-- but Roact portals might be complex here.
-	-- Let's render it as a sibling of the target in Preview.lua, effectively covering it if ZIndex is high.
+			UIPadding = e("UIPadding", {
+				PaddingTop = UDim.new(0, 5),
+				PaddingBottom = UDim.new(0, 5),
+				PaddingLeft = UDim.new(0, 5),
+				PaddingRight = UDim.new(0, 5),
+			}),
+			UIListLayout = e("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 2),
+			}),
+			NameLabel = e("TextLabel", {
+				Text = props.Name .. " (" .. props.ClassName .. ")",
+				TextColor3 = Color3.fromRGB(255, 255, 255),
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 14,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 1,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+			SizeLabel = e("TextLabel", {
+				Text = "Size: " .. props.Size,
+				TextColor3 = Color3.fromRGB(200, 200, 200),
+				Font = Enum.Font.Code,
+				TextSize = 12,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 2,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+			PadLabel = e("TextLabel", {
+				Text = "Pad: " .. props.Padding,
+				TextColor3 = Color3.fromRGB(200, 200, 200),
+				Font = Enum.Font.Code,
+				TextSize = 12,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 3,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+		})
+	end
 
 	if self.props.Target then
 		return e(Roact.Portal, {
