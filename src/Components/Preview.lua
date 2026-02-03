@@ -69,7 +69,22 @@ function Preview:init()
 		deviceName = nil, -- Saved device name
 		isPoppedOut = false,
 		backgroundColorIndex = 1,
+		hoveredButton = nil,
 	}
+
+	self.setHoveredButton = function(key)
+		self:setState({
+			hoveredButton = key
+		})
+	end
+
+	self.clearHoveredButton = function(key)
+		if self.state.hoveredButton == key then
+			self:setState({
+				hoveredButton = Roact.None
+			})
+		end
+	end
 
 	-- Load device setting
 	if self.props.Plugin then
@@ -530,7 +545,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.fromScale(0.99, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Select" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.openSelection,
@@ -538,6 +553,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Select in Explorer",
+				OnHover = function() self.setHoveredButton("Select") end,
+				OnUnhover = function() self.clearHoveredButton("Select") end,
 			}),
 		}),
 
@@ -546,7 +563,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -45, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Expand" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.expandSelection,
@@ -554,6 +571,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Expand / Collapse",
+				OnHover = function() self.setHoveredButton("Expand") end,
+				OnUnhover = function() self.clearHoveredButton("Expand") end,
 			}),
 		}),
 
@@ -562,7 +581,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -90, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "PopOut" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.togglePopOut,
@@ -571,6 +590,8 @@ function Preview:render()
 				Size = UDim.new(0, 40),
 				ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
 				Tooltip = "Pop Out Window",
+				OnHover = function() self.setHoveredButton("PopOut") end,
+				OnUnhover = function() self.clearHoveredButton("PopOut") end,
 			}),
 		}),
 
@@ -579,7 +600,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -135, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Layout" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleLayout,
@@ -587,6 +608,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Toggle Layout",
+				OnHover = function() self.setHoveredButton("Layout") end,
+				OnUnhover = function() self.clearHoveredButton("Layout") end,
 			}),
 		}),
 
@@ -595,7 +618,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -270, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Background" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleBackgroundColor,
@@ -603,6 +626,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Change Background Color",
+				OnHover = function() self.setHoveredButton("Background") end,
+				OnUnhover = function() self.clearHoveredButton("Background") end,
 			}),
 		}),
 
@@ -611,7 +636,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -180, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Stats" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleStats,
@@ -619,6 +644,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Toggle Stats",
+				OnHover = function() self.setHoveredButton("Stats") end,
+				OnUnhover = function() self.clearHoveredButton("Stats") end,
 			}),
 		}),
 
@@ -627,7 +654,7 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.99, -225, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Debug" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.toggleDebug,
@@ -635,6 +662,8 @@ function Preview:render()
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Toggle Debug Overlay",
+				OnHover = function() self.setHoveredButton("Debug") end,
+				OnUnhover = function() self.clearHoveredButton("Debug") end,
 			}),
 		}),
 

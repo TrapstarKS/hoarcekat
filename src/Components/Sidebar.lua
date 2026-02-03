@@ -9,6 +9,7 @@ local Roact = require(Hoarcekat.Vendor.Roact)
 local RoactRodux = require(Hoarcekat.Vendor.RoactRodux)
 local StudioThemeAccessor = require(script.Parent.StudioThemeAccessor)
 local TextLabel = require(script.Parent.TextLabel)
+local Tooltip = require(script.Parent.Tooltip)
 
 local e = Roact.createElement
 
@@ -80,11 +81,24 @@ function Sidebar:init()
 		searchTerm = "",
 		pinnedStories = {},
 		isMultiSelectEnabled = false,
+		multiSelectHovered = false,
 	}
 
 	self.toggleMultiSelect = function()
 		self:setState({
 			isMultiSelectEnabled = not self.state.isMultiSelectEnabled
+		})
+	end
+
+	self.hoverMultiSelect = function()
+		self:setState({
+			multiSelectHovered = true
+		})
+	end
+
+	self.unhoverMultiSelect = function()
+		self:setState({
+			multiSelectHovered = false
 		})
 	end
 
@@ -364,6 +378,13 @@ function Sidebar:render()
 						Image = "http://www.roblox.com/asset/?id=6034510026", -- Valid built-in generic icon
 						ImageColor3 = theme:GetColor("MainText", "Default"),
 						[Roact.Event.Activated] = self.toggleMultiSelect,
+						[Roact.Event.MouseEnter] = self.hoverMultiSelect,
+						[Roact.Event.MouseLeave] = self.unhoverMultiSelect,
+					}, {
+						Tooltip = e(Tooltip, {
+							Text = "Toggle Multi-Select",
+							Visible = self.state.multiSelectHovered,
+						}),
 					}),
 				}),
 

@@ -15,10 +15,16 @@ function FloatingButton:init()
 
 	self.hover = function()
 		self.setHovered(true)
+		if self.props.OnHover then
+			self.props.OnHover()
+		end
 	end
 
 	self.unhover = function()
 		self.setHovered(false)
+		if self.props.OnUnhover then
+			self.props.OnUnhover()
+		end
 	end
 
 	self.press = function()
