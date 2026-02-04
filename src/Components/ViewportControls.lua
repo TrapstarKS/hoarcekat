@@ -11,61 +11,63 @@ local ViewportControls = Roact.PureComponent:extend("ViewportControls")
 
 function ViewportControls:init()
 	self.maid = Maid.new()
-	self.ref = Roact.createRef() -- Ref for bounds check
+	self.ref = Roact.createRef()
 
-	self:setState({
-		scale = 1,
-		position = Vector2.new(0, 0),
-		isDragging = false,
-	})
-
+	self.isDragging = false
 	self.lastMousePos = Vector2.new(0, 0)
 end
 
 function ViewportControls:didMount()
-	-- Wheel to Zoom
+	-- Bolt: Use Global Input with robust bounds checking.
+	-- This ensures we catch input even if the internal UI blocks standard bubbling.
+
 	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
-		if not self.props.Enabled then return end -- Check Enabled prop
+		if not self.props.Enabled then return end
+
+		local frame = self.ref:getValue()
+		if not frame then return end
 
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
-			-- Bolt: Use robust bounds check instead of fragile MouseEnter
-			local frame = self.ref:getValue()
-			if not frame then return end
-
+			-- Bounds Check
 			local mousePos = UserInputService:GetMouseLocation()
 			local absPos = frame.AbsolutePosition
 			local absSize = frame.AbsoluteSize
 
-			-- Check if mouse is inside the viewport frame
 			if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
 			   mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
 
+				local currentScale = self.props.Scale or 1
 				local delta = input.Position.Z
-				local newScale = math.clamp(self.state.scale + (delta * 0.1), 0.1, 5)
-				self:setState({ scale = newScale })
+				local newScale = math.clamp(currentScale + (delta * 0.1), 0.1, 5)
+
+				if self.props.OnChange then
+					self.props.OnChange(newScale, self.props.Position)
+				end
 			end
 
 		elseif input.UserInputType == Enum.UserInputType.MouseMovement then
-			if self.state.isDragging then
+			if self.isDragging then
 				local currentPos = Vector2.new(input.Position.X, input.Position.Y)
 				local delta = currentPos - self.lastMousePos
-				self:setState({
-					position = self.state.position + delta
-				})
+
+				local newPos = (self.props.Position or Vector2.new(0,0)) + delta
+
+				if self.props.OnChange then
+					self.props.OnChange(self.props.Scale, newPos)
+				end
+
 				self.lastMousePos = currentPos
 			end
 		end
 	end))
 
-	-- Right/Middle Click to Pan
 	self.maid:GiveTask(UserInputService.InputBegan:Connect(function(input)
-		if not self.props.Enabled then return end -- Check Enabled prop
+		if not self.props.Enabled then return end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
 			local frame = self.ref:getValue()
 			if not frame then return end
 
-			-- Check bounds for click start too
 			local mousePos = UserInputService:GetMouseLocation()
 			local absPos = frame.AbsolutePosition
 			local absSize = frame.AbsoluteSize
@@ -73,7 +75,7 @@ function ViewportControls:didMount()
 			if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
 			   mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
 
-				self:setState({ isDragging = true })
+				self.isDragging = true
 				self.lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
 			end
 		end
@@ -81,7 +83,7 @@ function ViewportControls:didMount()
 
 	self.maid:GiveTask(UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
-			self:setState({ isDragging = false })
+			self.isDragging = false
 		end
 	end))
 end
@@ -91,36 +93,14 @@ function ViewportControls:willUnmount()
 end
 
 function ViewportControls:render()
-	local scale = self.state.scale
-	local pos = self.state.position
-
-	-- Bolt: Move reset button logic to render properly
-	local resetButton = nil
-	-- Always show if zoomed/panned.
-	if scale ~= 1 or pos.Magnitude > 0 then
-		resetButton = e("TextButton", {
-			Text = string.format("Reset Zoom (%.1fx)", scale),
-			Size = UDim2.fromOffset(120, 28),
-			Position = UDim2.new(1, -10, 0, 10),
-			AnchorPoint = Vector2.new(1, 0),
-			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-			BorderColor3 = Color3.fromRGB(100, 100, 100),
-			BorderSizePixel = 1,
-			TextColor3 = Color3.new(1, 1, 1),
-			Font = Enum.Font.SourceSansBold,
-			TextSize = 14,
-			ZIndex = 100, -- High ZIndex relative to container
-			[Roact.Event.Activated] = function()
-				self:setState({ scale = 1, position = Vector2.new(0, 0) })
-			end
-		})
-	end
+	local scale = self.props.Scale or 1
+	local pos = self.props.Position or Vector2.new(0, 0)
 
 	return e("Frame", {
 		Name = "ViewportControls",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		ClipsDescendants = true, -- Clip content
+		ClipsDescendants = true,
 		[Roact.Ref] = self.ref,
 	}, {
 		Content = e("Frame", {
@@ -132,21 +112,8 @@ function ViewportControls:render()
 			Scale = e("UIScale", {
 				Scale = scale,
 			}),
-			-- Children passed to this component
 			Children = Roact.createFragment(self.props[Roact.Children]),
-		}),
-
-		-- Overlay UI for Reset
-		ResetButton = resetButton and (
-			self.props.PortalTarget and e(Roact.Portal, { target = self.props.PortalTarget }, {
-				ZoomResetOverlay = e("ScreenGui", { DisplayOrder = 100 }, { -- Ensure it's on top
-					Container = e("Frame", {
-						Size = UDim2.fromScale(1, 1),
-						BackgroundTransparency = 1,
-					}, { Button = resetButton })
-				})
-			}) or resetButton
-		)
+		})
 	})
 end
 

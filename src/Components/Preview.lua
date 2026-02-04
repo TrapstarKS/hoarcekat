@@ -67,6 +67,8 @@ function Preview:init()
 		showDebug = false,
 		showInspector = false,
 		showZoom = false, -- Bolt: Zoom Mode Toggle
+		zoomScale = 1, -- Controlled Zoom State
+		zoomPos = Vector2.new(0, 0), -- Controlled Zoom Position
 		renderCount = 0,
 		layoutMode = "Stack", -- "Split" or "Stack" (Default: Stack)
 		deviceSize = nil, -- Vector2 or nil
@@ -82,6 +84,20 @@ function Preview:init()
 	self.toggleZoom = function()
 		self:setState({
 			showZoom = not self.state.showZoom
+		})
+	end
+
+	self.onZoomChange = function(scale, pos)
+		self:setState({
+			zoomScale = scale,
+			zoomPos = pos
+		})
+	end
+
+	self.resetZoom = function()
+		self:setState({
+			zoomScale = 1,
+			zoomPos = Vector2.new(0, 0)
 		})
 	end
 
@@ -789,6 +805,52 @@ function Preview:render()
 			})
 		}),
 
+		-- Bolt: Zoom Controls (Device Emulator Style)
+		ZoomControls = (self.state.showZoom and (self.state.zoomScale ~= 1 or self.state.zoomPos.Magnitude > 0)) and e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0, 50), -- Below Device Emulator (10 + 30 + 10 padding)
+			Size = UDim2.fromOffset(140, 28),
+			ZIndex = 50, -- High Z-Index to overlay content
+		}, {
+			Background = e("Frame", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BorderSizePixel = 0,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+				UIStroke = e("UIStroke", {
+					Color = Color3.fromRGB(60, 60, 60),
+					Thickness = 1,
+				}),
+			}),
+
+			InfoLabel = e("TextLabel", {
+				Text = string.format("Zoom: %.0f%%", self.state.zoomScale * 100),
+				Size = UDim2.new(0.5, -5, 1, 0),
+				Position = UDim2.fromOffset(5, 0),
+				BackgroundTransparency = 1,
+				TextColor3 = Color3.new(0.9, 0.9, 0.9),
+				TextSize = 14,
+				Font = Enum.Font.SourceSansBold,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+
+			ResetButton = e("TextButton", {
+				Text = "Reset",
+				Size = UDim2.new(0.4, 0, 0.8, 0),
+				Position = UDim2.new(1, -5, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 12,
+				Font = Enum.Font.SourceSans,
+				[Roact.Event.Activated] = self.resetZoom,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			})
+		}),
+
 		SelectButton = e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
@@ -1028,14 +1090,9 @@ function Preview:render()
 
 		StoryContainer = e(ViewportControls, {
 			Enabled = self.state.showZoom,
-			PortalTarget = (function()
-				if self.expand and self.display then
-					return self.display
-				elseif self.state.isPoppedOut and self.popOutWidget then
-					return self.popOutWidget
-				end
-				return nil
-			end)(),
+			Scale = self.state.zoomScale,
+			Position = self.state.zoomPos,
+			OnChange = self.onZoomChange,
 		}, {
 			Content = e("Frame", {
 				Name = "StoryContainer",
