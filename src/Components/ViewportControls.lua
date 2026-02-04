@@ -24,11 +24,10 @@ function ViewportControls:didMount()
 	-- Wheel to Zoom
 	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
-			-- Only zoom if mouse is over the preview area?
-			-- This is hard to detect perfectly without "MouseEnter".
-			-- Assuming global context for now, but better to check if hovered.
-			-- Actually, simple check: is Mouse inside the Plugin Widget?
-			-- We can assume yes if this component is mounted and visible.
+			-- Bolt: Ensure we only zoom if the mouse is hovering over OUR container (to avoid zooming when scrolling sidebar)
+			-- But InputChanged is global.
+			-- We need a flag 'isHovered'.
+			if not self.isHovered then return end
 
 			local delta = input.Position.Z
 			local newScale = math.clamp(self.state.scale + (delta * 0.1), 0.1, 5)
@@ -68,11 +67,33 @@ function ViewportControls:render()
 	local scale = self.state.scale
 	local pos = self.state.position
 
+	-- Bolt: Move reset button logic to render properly
+	local resetButton = nil
+	if scale ~= 1 or pos.Magnitude > 0 then
+		resetButton = e("TextButton", {
+			Text = string.format("Reset Zoom (%.1fx)", scale),
+			Size = UDim2.fromOffset(100, 24),
+			Position = UDim2.new(1, -10, 0, 10),
+			AnchorPoint = Vector2.new(1, 0),
+			BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+			TextColor3 = Color3.new(1, 1, 1),
+			Font = Enum.Font.SourceSans,
+			TextSize = 14,
+			ZIndex = 100,
+			[Roact.Event.Activated] = function()
+				self:setState({ scale = 1, position = Vector2.new(0, 0) })
+			end
+		})
+	end
+
 	return e("Frame", {
 		Name = "ViewportControls",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		ClipsDescendants = true, -- Clip content
+		-- Track Hover for Zoom
+		[Roact.Event.MouseEnter] = function() self.isHovered = true end,
+		[Roact.Event.MouseLeave] = function() self.isHovered = false end,
 	}, {
 		Content = e("Frame", {
 			Name = "ZoomContainer",
@@ -87,21 +108,17 @@ function ViewportControls:render()
 			Children = Roact.createFragment(self.props[Roact.Children]),
 		}),
 
-		-- Overlay UI for Reset?
-		ResetButton = (scale ~= 1 or pos.Magnitude > 0) and e("TextButton", {
-			Text = string.format("Reset Zoom (%.1fx)", scale),
-			Size = UDim2.fromOffset(100, 24),
-			Position = UDim2.new(1, -10, 0, 10),
-			AnchorPoint = Vector2.new(1, 0),
-			BackgroundColor3 = Color3.fromRGB(40, 40, 40),
-			TextColor3 = Color3.new(1, 1, 1),
-			Font = Enum.Font.SourceSans,
-			TextSize = 14,
-			ZIndex = 100,
-			[Roact.Event.Activated] = function()
-				self:setState({ scale = 1, position = Vector2.new(0, 0) })
-			end
-		})
+		-- Overlay UI for Reset
+		ResetButton = resetButton and (
+			self.props.PortalTarget and e(Roact.Portal, { target = self.props.PortalTarget }, {
+				ZoomResetOverlay = e("ScreenGui", { DisplayOrder = 100 }, { -- Ensure it's on top
+					Container = e("Frame", {
+						Size = UDim2.fromScale(1, 1),
+						BackgroundTransparency = 1,
+					}, { Button = resetButton })
+				})
+			}) or resetButton
+		)
 	})
 end
 

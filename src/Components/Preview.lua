@@ -79,23 +79,28 @@ function Preview:init()
 		compactMode = false,
 	}
 
-	self.toggleCompact = function()
-		self:setState({
-			compactMode = not self.state.compactMode
-		})
-	end
-
 	self.enterScreenshotMode = function()
 		-- Enter Compact Mode + Reset View
 		self:setState({
-			compactMode = true,
+			compactMode = true, -- Used for Screenshot only now
 			showStats = false,
 			showDebug = false,
 			showInspector = false,
 			backgroundColorIndex = 0, -- Custom
-			customBgColor = Color3.fromRGB(0, 0, 0), -- Transparent-ish black (user can change)
+			customBgColor = Color3.fromRGB(0, 0, 0),
 		})
-		-- Ideally we would also center the ViewportControls here, but that state is internal to the component.
+	end
+
+	self.forceSoftReset = function()
+		-- Bolt: Soft Reset to clear memory leaks.
+		-- We clear the preview, destroy the maid (unsubscribing everything), and then refresh.
+		self:clearPreview()
+		self:setState({ renderCount = 0 }) -- Reset stats too
+
+		-- Small delay to let things clean up
+		task.delay(0.1, function()
+			self:refreshPreview()
+		end)
 	end
 
 	self.setHoveredButton = function(key)
@@ -967,7 +972,25 @@ function Preview:render()
 			}),
 		}),
 
-		CompactButton = e("Frame", {
+		ScreenshotButton = e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -360, 0.99),
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = self.state.hoveredButton == "Screenshot" and 10 or 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.enterScreenshotMode,
+				Image = "rbxasset://textures/ui/Camera/CameraIcon.png",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+				Tooltip = "Screenshot Mode",
+				OnHover = function() self.setHoveredButton("Screenshot") end,
+				OnUnhover = function() self.clearHoveredButton("Screenshot") end,
+			}),
+		}),
+
+		ResetPluginButton = e("Frame", {
 			AnchorPoint = Vector2.new(0, 1),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0, 5, 0.99, 0), -- Bottom Left
@@ -975,32 +998,14 @@ function Preview:render()
 			ZIndex = 100,
 		}, {
 			Button = e(FloatingButton, {
-				Activated = self.toggleCompact,
-				Image = "rbxasset://textures/ui/Settings/SettingsIcon.png", -- Placeholder for Zen/Compact
+				Activated = self.forceSoftReset,
+				Image = "rbxasset://textures/StudioToolbox/Refresh.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				ImageColor3 = self.state.compactMode and Color3.fromRGB(0, 255, 0) or Color3.new(1, 1, 1),
-				Tooltip = "Compact / Zen Mode",
-				OnHover = function() self.setHoveredButton("Compact") end,
-				OnUnhover = function() self.clearHoveredButton("Compact") end,
-			}),
-		}),
-
-		ScreenshotButton = e("Frame", {
-			AnchorPoint = Vector2.new(0, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0, 50, 0.99, 0), -- Next to Compact
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 100,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.enterScreenshotMode,
-				Image = "rbxasset://textures/ui/Camera/CameraIcon.png",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Screenshot Prep (Zen + Clean BG)",
-				OnHover = function() self.setHoveredButton("Screenshot") end,
-				OnUnhover = function() self.clearHoveredButton("Screenshot") end,
+				ImageColor3 = Color3.fromRGB(255, 100, 100), -- Red to indicate "Force"
+				Tooltip = "Force Reload (Fix Leaks)",
+				OnHover = function() self.setHoveredButton("Reset") end,
+				OnUnhover = function() self.clearHoveredButton("Reset") end,
 			}),
 		}),
 
@@ -1030,7 +1035,16 @@ function Preview:render()
 			return overlay
 		end)(),
 
-		StoryContainer = e(ViewportControls, {}, {
+		StoryContainer = e(ViewportControls, {
+			PortalTarget = (function()
+				if self.expand and self.display then
+					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				end
+				return nil
+			end)(),
+		}, {
 			Content = e("Frame", {
 				Name = "StoryContainer",
 				Size = UDim2.fromScale(1, 1),
