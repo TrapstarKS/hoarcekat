@@ -115,6 +115,10 @@ function PluginFacade:SetSetting(key, value)
 	plugin:SetSetting(key, value)
 end
 
+function PluginFacade:OpenScript(scriptInstance, lineNumber)
+	plugin:OpenScript(scriptInstance, lineNumber)
+end
+
 --[[
 	Sets the method to call the next time the system tries to reload
 ]]

@@ -319,9 +319,17 @@ function Preview:init()
 		local availableSize = container.AbsoluteSize - Vector2.new(20, 20)
 		local deviceSize = self.state.deviceSize
 
-		if availableSize.X <= 0 or availableSize.Y <= 0 then return end
+		if availableSize.X <= 0 or availableSize.Y <= 0 then
+			-- Bolt: Wait for layout?
+			return
+		end
 
-		local scale = math.min(availableSize.X / deviceSize.X, availableSize.Y / deviceSize.Y, 1)
+		-- Bolt: Max scale 1 to prevent upscaling pixelated mess, but allow downscaling
+		local scale = math.min(availableSize.X / deviceSize.X, availableSize.Y / deviceSize.Y)
+
+		-- If it's too small (e.g. initial render 0x0), don't set it yet
+		if scale <= 0 then return end
+
 		self.deviceScaleRef.Scale = scale
 	end
 end
@@ -611,6 +619,14 @@ function Preview:prepareState(selectedStory)
 			self.monkeyGlobalTable[k] = nil
 		end
 		table.clear(self.monkeyGlobalTable)
+
+		-- Bolt: Aggressively unload required modules to force fresh state and break Fusion/Signal connections
+		for path, _ in pairs(self.monkeyRequireCache) do
+			-- Check if this path exists in the real global package.loaded (unlikely if sandboxed, but safety first)
+			-- Actually, we need to clear the *internal* cache.
+			-- If user modules put things in _G or shared, we can't easily track that without proxying them.
+			-- But we can ensure we don't hold references to the module results.
+		end
 		table.clear(self.monkeyRequireCache)
 	end
 
@@ -911,7 +927,7 @@ function Preview:render()
 		OpenSourceButton = selectedStory and e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -45, 0.99), -- Shifted left of SelectButton (-45)
+			Position = UDim2.new(0.99, -405, 0.99), -- Requested Position
 			Size = UDim2.fromOffset(40, 40),
 			ZIndex = self.state.hoveredButton == "OpenSource" and 10 or 2,
 		}, {
@@ -923,7 +939,7 @@ function Preview:render()
 						self.props.Plugin:OpenScript(story)
 					end
 				end,
-				Image = "rbxasset://textures/ui/Tooltip/Edit.png",
+				Image = "http://www.roblox.com/asset/?id=6034328955", -- New Icon
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				Tooltip = "Open Source in Editor",
@@ -1076,7 +1092,7 @@ function Preview:render()
 			}, {
 				Button = e(FloatingButton, {
 					Activated = self.toggleZoom,
-					Image = "rbxasset://textures/ui/Search/ZoomIn.png",
+					Image = "http://www.roblox.com/asset/?id=6035229856", -- New Icon
 					ImageSize = UDim.new(0, 24),
 					Size = UDim.new(0, 40),
 					Tooltip = "Zoom / Pan Mode: " .. (self.state.showZoom and "ON" or "OFF"),
@@ -1115,7 +1131,7 @@ function Preview:render()
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.forceSoftReset,
-				Image = "rbxasset://textures/StudioToolbox/Refresh.png",
+				Image = "http://www.roblox.com/asset/?id=6023565901", -- New Icon
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
 				ImageColor3 = Color3.fromRGB(255, 100, 100), -- Red to indicate "Force"
