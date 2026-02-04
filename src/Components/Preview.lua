@@ -949,7 +949,7 @@ function Preview:render()
 			ZoomButton = e("Frame", {
 				AnchorPoint = Vector2.new(1, 1),
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.99, -270, 0.99), -- Shifted Inspector logic
+				Position = UDim2.new(0.99, -315, 0.99),
 				Size = UDim2.fromOffset(40, 40),
 				ZIndex = self.state.hoveredButton == "Zoom" and 10 or 2,
 			}, {
@@ -958,7 +958,7 @@ function Preview:render()
 					Image = "rbxasset://textures/ui/Search/ZoomIn.png",
 					ImageSize = UDim.new(0, 24),
 					Size = UDim.new(0, 40),
-					Tooltip = "Zoom / Pan Mode",
+					Tooltip = "Zoom / Pan Mode: " .. (self.state.showZoom and "ON" or "OFF"),
 					ImageColor3 = self.state.showZoom and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
 					OnHover = function() self.setHoveredButton("Zoom") end,
 					OnUnhover = function() self.clearHoveredButton("Zoom") end,
@@ -968,7 +968,7 @@ function Preview:render()
 			InspectorButton = e("Frame", {
 				AnchorPoint = Vector2.new(1, 1),
 				BackgroundTransparency = 1,
-				Position = UDim2.new(0.99, -315, 0.99),
+				Position = UDim2.new(0.99, -360, 0.99),
 				Size = UDim2.fromOffset(40, 40),
 				ZIndex = self.state.hoveredButton == "Inspector" and 10 or 2,
 			}, {

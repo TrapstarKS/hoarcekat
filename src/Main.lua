@@ -31,12 +31,38 @@ local function Main(plugin, savedState)
 	local savedStory
 	if savedStoryPath then
 		local current = game
-		for _, part in ipairs(string.split(savedStoryPath, ".")) do
-			if current then
-				current = current:FindFirstChild(part)
+		local parts = string.split(savedStoryPath, ".")
+		local i = 1
+		local pathValid = true
+
+		while i <= #parts and current do
+			local found = false
+			local name = parts[i]
+
+			-- Bolt: Greedy matching for names containing dots (e.g. "MyStory.story")
+			for j = i, #parts do
+				if j > i then
+					name = name .. "." .. parts[j]
+				end
+
+				local child = current:FindFirstChild(name)
+				if child then
+					current = child
+					i = j + 1
+					found = true
+					break
+				end
+			end
+
+			if not found then
+				pathValid = false
+				break
 			end
 		end
-		savedStory = current
+
+		if pathValid then
+			savedStory = current
+		end
 		-- Debug: print("Resolved Story:", savedStory)
 	end
 
