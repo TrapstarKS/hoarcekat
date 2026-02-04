@@ -23,8 +23,8 @@ local function Main(plugin, savedState)
 
 	local toggleButton = plugin:button(toolbar, "Hoarcekat", "Open the Hoarcekat window", "rbxassetid://4621571957")
 
-	-- Bolt: Load persisted selected story
-	local savedStoryPath = plugin:GetSetting("LastSelectedStory")
+	-- Bolt: Load persisted selected story (Per Place)
+	local savedStoryPath = plugin:GetSetting("LastSelectedStory_" .. tostring(game.PlaceId))
 	local savedStory
 	if savedStoryPath then
 		local current = game
@@ -77,22 +77,20 @@ local function Main(plugin, savedState)
 	local unloadConnection
 
 	plugin:beforeUnload(function()
-		-- Bolt: Persist selected story
+		-- Bolt: Persist selected story (Per Place)
 		local state = store:getState()
+		local settingKey = "LastSelectedStory_" .. tostring(game.PlaceId)
+
 		if state.StoryPicker and type(state.StoryPicker) == "table" and state.StoryPicker[1] then
 			local story = state.StoryPicker[1]
 			-- We can't save instances directly to settings, so save the path (FullName)
-			-- But FullName includes "Game.", we need generic access.
-			-- Actually, FullName works if we parse it relative to game.
-			-- Or just names. "game.ReplicatedStorage..."
-			-- Let's strip "game." if present.
 			local path = story:GetFullName()
 			if path:sub(1, 5) == "game." then
 				path = path:sub(6)
 			end
-			plugin:SetSetting("LastSelectedStory", path)
+			plugin:SetSetting(settingKey, path)
 		else
-			plugin:SetSetting("LastSelectedStory", nil)
+			plugin:SetSetting(settingKey, nil)
 		end
 
 		Roact.unmount(instance)

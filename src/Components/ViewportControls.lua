@@ -69,17 +69,20 @@ function ViewportControls:render()
 
 	-- Bolt: Move reset button logic to render properly
 	local resetButton = nil
+	-- Always show if zoomed/panned.
 	if scale ~= 1 or pos.Magnitude > 0 then
 		resetButton = e("TextButton", {
 			Text = string.format("Reset Zoom (%.1fx)", scale),
-			Size = UDim2.fromOffset(100, 24),
+			Size = UDim2.fromOffset(120, 28),
 			Position = UDim2.new(1, -10, 0, 10),
 			AnchorPoint = Vector2.new(1, 0),
-			BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+			BorderColor3 = Color3.fromRGB(100, 100, 100),
+			BorderSizePixel = 1,
 			TextColor3 = Color3.new(1, 1, 1),
-			Font = Enum.Font.SourceSans,
+			Font = Enum.Font.SourceSansBold,
 			TextSize = 14,
-			ZIndex = 100,
+			ZIndex = 1000, -- High ZIndex
 			[Roact.Event.Activated] = function()
 				self:setState({ scale = 1, position = Vector2.new(0, 0) })
 			end

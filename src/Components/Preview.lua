@@ -76,20 +76,7 @@ function Preview:init()
 		customBgColor = nil, -- For custom settings
 		customBgImage = nil,
 		showBgControls = false,
-		compactMode = false,
 	}
-
-	self.enterScreenshotMode = function()
-		-- Enter Compact Mode + Reset View
-		self:setState({
-			compactMode = true, -- Used for Screenshot only now
-			showStats = false,
-			showDebug = false,
-			showInspector = false,
-			backgroundColorIndex = 0, -- Custom
-			customBgColor = Color3.fromRGB(0, 0, 0),
-		})
-	end
 
 	self.forceSoftReset = function()
 		-- Bolt: Soft Reset to clear memory leaks.
@@ -786,7 +773,7 @@ function Preview:render()
 			PaddingTop = UDim.new(0, 5),
 		}),
 
-		DeviceEmulator = (DeviceEmulator and not self.state.compactMode) and e("Frame", {
+		DeviceEmulator = DeviceEmulator and e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.5, 0, 0, 10),
@@ -817,8 +804,8 @@ function Preview:render()
 			}),
 		}),
 
-		-- Bolt: Toolbar (Hide in Compact Mode)
-		Toolbar = not self.state.compactMode and Roact.createFragment({
+		-- Bolt: Toolbar
+		Toolbar = Roact.createFragment({
 			ExpandButton = e("Frame", {
 				AnchorPoint = Vector2.new(1, 1),
 				BackgroundTransparency = 1,
@@ -969,24 +956,6 @@ function Preview:render()
 					OnHover = function() self.setHoveredButton("Inspector") end,
 					OnUnhover = function() self.clearHoveredButton("Inspector") end,
 				}),
-			}),
-		}),
-
-		ScreenshotButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -360, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Screenshot" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.enterScreenshotMode,
-				Image = "rbxasset://textures/ui/Camera/CameraIcon.png",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Screenshot Mode",
-				OnHover = function() self.setHoveredButton("Screenshot") end,
-				OnUnhover = function() self.clearHoveredButton("Screenshot") end,
 			}),
 		}),
 
