@@ -670,7 +670,6 @@ function Preview:prepareState(selectedStory)
 		-- Bolt: Create a sandbox to intercept potentially leaking connections (RunService, etc)
 		-- We need to proxy global services.
 		local env = getfenv()
-		local sandbox = {}
 
 		-- Proxy 'Instance' to track creation
 		local instanceProxy = newproxy(true)
@@ -698,6 +697,80 @@ function Preview:prepareState(selectedStory)
 		local gameMeta = getmetatable(gameProxy)
 		local serviceCache = {} -- Bolt: Cache services to avoid creating new proxies every call
 
+		-- Helper to track RBXScriptSignal connections
+		local function trackSignal(signal)
+			local signalProxy = newproxy(true)
+			local signalMeta = getmetatable(signalProxy)
+			signalMeta.__index = function(_, sigKey)
+				local realValue = signal[sigKey]
+				if sigKey == "Connect" or sigKey == "connect" then
+					return function(_, callback)
+						local conn = signal:Connect(callback)
+						state.monkeyRequireMaid:GiveTask(conn) -- Track it!
+						return conn
+					end
+				elseif sigKey == "Once" then
+					return function(_, callback)
+						local conn = signal:Once(callback)
+						state.monkeyRequireMaid:GiveTask(conn) -- Track it!
+						return conn
+					end
+				end
+				return realValue
+			end
+			return signalProxy
+		end
+
+		-- Helper to proxy Services
+		local function createServiceProxy(service)
+			local proxy = newproxy(true)
+			local meta = getmetatable(proxy)
+			meta.__index = function(_, key)
+				local realValue = service[key]
+
+				-- Intercept Connections
+				if typeof(realValue) == "RBXScriptSignal" then
+					return trackSignal(realValue)
+				end
+
+				-- Intercept RunService.BindToRenderStep
+				if service.Name == "RunService" and key == "BindToRenderStep" then
+					return function(_, name, priority, callback)
+						local success, err = pcall(function()
+							service:BindToRenderStep(name, priority, callback)
+						end)
+						if success then
+							state.monkeyRequireMaid:GiveTask(function()
+								service:UnbindFromRenderStep(name)
+							end)
+						else
+							warn("Failed to BindToRenderStep:", err)
+						end
+					end
+				end
+
+				-- Intercept ContextActionService.BindAction
+				if service.Name == "ContextActionService" and key == "BindAction" then
+					return function(_, actionName, callback, createTouch, ...)
+						service:BindAction(actionName, callback, createTouch, ...)
+						state.monkeyRequireMaid:GiveTask(function()
+							service:UnbindAction(actionName)
+						end)
+					end
+				end
+
+				-- Intercept Methods to fix 'self'
+				if typeof(realValue) == "function" then
+					return function(_, ...)
+						return realValue(service, ...)
+					end
+				end
+
+				return realValue
+			end
+			return proxy
+		end
+
 		gameMeta.__index = function(_, key)
 			if key == "GetService" then
 				return function(_, serviceName)
@@ -706,39 +779,17 @@ function Preview:prepareState(selectedStory)
 					end
 
 					local service = game:GetService(serviceName)
-					-- Intercept RunService to track connections
-					if serviceName == "RunService" then
-						local rsProxy = newproxy(true)
-						local rsMeta = getmetatable(rsProxy)
-						rsMeta.__index = function(_, rsKey)
-							local realValue = service[rsKey]
-							-- Wrap signals to track connection
-							if (rsKey == "Heartbeat" or rsKey == "RenderStepped" or rsKey == "Stepped") and typeof(realValue) == "RBXScriptSignal" then
-								local signalProxy = newproxy(true)
-								local signalMeta = getmetatable(signalProxy)
-								signalMeta.__index = function(_, sigKey)
-									if sigKey == "Connect" then
-										return function(_, callback)
-											local conn = realValue:Connect(callback)
-											state.monkeyRequireMaid:GiveTask(conn) -- Track it!
-											return conn
-										end
-									end
-									return realValue[sigKey]
-								end
-								return signalProxy
-							elseif typeof(realValue) == "function" then
-								-- Bolt: Fix for method calls like RunService:IsStudio().
-								-- The proxy 'self' causes the real method to fail because it expects a Service instance.
-								-- We wrap it to ignore the proxy 'self' and pass the real service.
-								return function(_, ...)
-									return realValue(service, ...)
-								end
-							end
-							return realValue
-						end
-						serviceCache[serviceName] = rsProxy
-						return rsProxy
+
+					-- Services to proxy for leaks
+					if serviceName == "RunService" or
+					   serviceName == "UserInputService" or
+					   serviceName == "ContextActionService" or
+					   serviceName == "GuiService" or
+					   serviceName == "Players" then
+
+						local proxy = createServiceProxy(service)
+						serviceCache[serviceName] = proxy
+						return proxy
 					end
 
 					serviceCache[serviceName] = service
@@ -746,6 +797,39 @@ function Preview:prepareState(selectedStory)
 				end
 			end
 			return game[key]
+		end
+
+		-- Proxy 'task' to track threads
+		local taskProxy = {}
+		for k, v in pairs(task) do
+			if k == "spawn" then
+				taskProxy[k] = function(f, ...)
+					local thread = task.spawn(f, ...)
+					-- We can't easy track completion, but we can cancel on cleanup
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			elseif k == "delay" then
+				taskProxy[k] = function(t, f, ...)
+					local thread = task.delay(t, f, ...)
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			elseif k == "defer" then
+				taskProxy[k] = function(f, ...)
+					local thread = task.defer(f, ...)
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			else
+				taskProxy[k] = v
+			end
 		end
 
 		local fenv = setmetatable({
@@ -756,6 +840,7 @@ function Preview:prepareState(selectedStory)
 			_G = state.monkeyGlobalTable,
 			game = gameProxy, -- Inject proxy
 			Instance = instanceProxy, -- Inject proxy
+			task = taskProxy, -- Inject proxy
 		}, {
 			__index = env,
 		})
