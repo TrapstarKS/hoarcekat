@@ -1093,6 +1093,7 @@ function Preview:render()
 			Scale = self.state.zoomScale,
 			Position = self.state.zoomPos,
 			OnChange = self.onZoomChange,
+			Mouse = self.props.Mouse,
 		}, {
 			Content = e("Frame", {
 				Name = "StoryContainer",
