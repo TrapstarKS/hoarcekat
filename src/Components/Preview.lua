@@ -345,10 +345,12 @@ function Preview:willUnmount()
 
 	if self.display then
 		self.display:Destroy()
+		self.display = nil
 	end
 
 	if self.popOutWidget then
 		self.popOutWidget:Destroy()
+		self.popOutWidget = nil
 	end
 end
 
@@ -597,15 +599,19 @@ function Preview:prepareState(selectedStory)
 		-- 2. Clean up internal connections (hot reload listeners)
 		self.monkeyRequireMaid:DoCleaning()
 
-		-- 3. Clear environment references to allow GC
-		table.clear(self.monkeyGlobalTable)
-		table.clear(self.monkeyRequireCache)
-
-		-- 4. Destroy target UI
+		-- 3. Destroy target UI immediately to break instance connections
 		if self.target then
 			self.target:Destroy()
 			self.target = nil
 		end
+
+		-- 4. Clear environment references to allow GC
+		-- Explicitly nil out globals to break circular refs
+		for k, v in pairs(self.monkeyGlobalTable) do
+			self.monkeyGlobalTable[k] = nil
+		end
+		table.clear(self.monkeyGlobalTable)
+		table.clear(self.monkeyRequireCache)
 	end
 
 	local function monkeyRequire(otherScript, root)

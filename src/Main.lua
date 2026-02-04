@@ -106,6 +106,14 @@ local function Main(plugin, savedState)
 
 	local unloadConnection
 
+	-- Bolt: Brute-force cleanup of any lingering CoreGui artifacts from previous sessions (crashes)
+	local CoreGui = game:GetService("CoreGui")
+	for _, child in ipairs(CoreGui:GetChildren()) do
+		if child.Name == "HoarcekatDisplay" then
+			child:Destroy()
+		end
+	end
+
 	plugin:beforeUnload(function()
 		-- Bolt: Persist selected story (Per Place)
 		local state = store:getState()
@@ -123,11 +131,24 @@ local function Main(plugin, savedState)
 			plugin:SetSetting(settingKey, nil)
 		end
 
-		Roact.unmount(instance)
+		local success, err = pcall(function()
+			Roact.unmount(instance)
+		end)
+		if not success then
+			warn("Hoarcekat: Failed to unmount safely:", err)
+		end
+
 		connection:Disconnect()
 
 		if unloadConnection then
 			unloadConnection:Disconnect()
+		end
+
+		-- Double check CoreGui cleanup
+		for _, child in ipairs(CoreGui:GetChildren()) do
+			if child.Name == "HoarcekatDisplay" then
+				child:Destroy()
+			end
 		end
 
 		return state
