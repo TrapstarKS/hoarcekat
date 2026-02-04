@@ -24,7 +24,10 @@ local function Main(plugin, savedState)
 	local toggleButton = plugin:button(toolbar, "Hoarcekat", "Open the Hoarcekat window", "rbxassetid://4621571957")
 
 	-- Bolt: Load persisted selected story (Per Place)
+	-- Debug: print("Loading settings for PlaceId:", game.PlaceId)
 	local savedStoryPath = plugin:GetSetting("LastSelectedStory_" .. tostring(game.PlaceId))
+	-- Debug: print("Saved Path:", savedStoryPath)
+
 	local savedStory
 	if savedStoryPath then
 		local current = game
@@ -34,6 +37,7 @@ local function Main(plugin, savedState)
 			end
 		end
 		savedStory = current
+		-- Debug: print("Resolved Story:", savedStory)
 	end
 
 	if savedStory and savedState then

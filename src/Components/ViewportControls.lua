@@ -23,10 +23,9 @@ end
 function ViewportControls:didMount()
 	-- Wheel to Zoom
 	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
+		if not self.props.Enabled then return end -- Check Enabled prop
+
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
-			-- Bolt: Ensure we only zoom if the mouse is hovering over OUR container (to avoid zooming when scrolling sidebar)
-			-- But InputChanged is global.
-			-- We need a flag 'isHovered'.
 			if not self.isHovered then return end
 
 			local delta = input.Position.Z
@@ -46,6 +45,8 @@ function ViewportControls:didMount()
 
 	-- Right/Middle Click to Pan
 	self.maid:GiveTask(UserInputService.InputBegan:Connect(function(input)
+		if not self.props.Enabled then return end -- Check Enabled prop
+
 		if input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
 			self:setState({ isDragging = true })
 			self.lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
