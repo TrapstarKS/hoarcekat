@@ -9,6 +9,7 @@ local FloatingButton = require(script.Parent.FloatingButton)
 local StatsOverlay = require(script.Parent.StatsOverlay)
 local DebugOverlay = require(script.Parent.DebugOverlay)
 local InspectorOverlay = require(script.Parent.InspectorOverlay)
+local ViewportControls = require(script.Parent.ViewportControls)
 local DeviceEmulator = require(script.Parent.DeviceEmulator)
 local Maid = require(Hoarcekat.Plugin.Maid)
 local Roact = require(Hoarcekat.Vendor.Roact)
@@ -75,7 +76,27 @@ function Preview:init()
 		customBgColor = nil, -- For custom settings
 		customBgImage = nil,
 		showBgControls = false,
+		compactMode = false,
 	}
+
+	self.toggleCompact = function()
+		self:setState({
+			compactMode = not self.state.compactMode
+		})
+	end
+
+	self.enterScreenshotMode = function()
+		-- Enter Compact Mode + Reset View
+		self:setState({
+			compactMode = true,
+			showStats = false,
+			showDebug = false,
+			showInspector = false,
+			backgroundColorIndex = 0, -- Custom
+			customBgColor = Color3.fromRGB(0, 0, 0), -- Transparent-ish black (user can change)
+		})
+		-- Ideally we would also center the ViewportControls here, but that state is internal to the component.
+	end
 
 	self.setHoveredButton = function(key)
 		self:setState({
@@ -252,6 +273,10 @@ function Preview:init()
 	end
 
 	self.toggleInspector = function()
+		if not self.expand then
+			-- Bolt: Inspector is restricted to Expanded view
+			return
+		end
 		self:setState({
 			showInspector = not self.state.showInspector
 		})
@@ -756,7 +781,7 @@ function Preview:render()
 			PaddingTop = UDim.new(0, 5),
 		}),
 
-		DeviceEmulator = DeviceEmulator and e("Frame", {
+		DeviceEmulator = (DeviceEmulator and not self.state.compactMode) and e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.5, 0, 0, 10),
@@ -787,155 +812,195 @@ function Preview:render()
 			}),
 		}),
 
-		ExpandButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -45, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Expand" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.expandSelection,
-				Image = "rbxasset://textures/ui/VR/toggle2D.png",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Expand / Collapse",
-				OnHover = function() self.setHoveredButton("Expand") end,
-				OnUnhover = function() self.clearHoveredButton("Expand") end,
-			}),
-		}),
-
-		PopOutButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -90, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "PopOut" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.togglePopOut,
-				Image = "http://www.roblox.com/asset/?id=6026568256",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
-				Tooltip = "Pop Out Window",
-				OnHover = function() self.setHoveredButton("PopOut") end,
-				OnUnhover = function() self.clearHoveredButton("PopOut") end,
-			}),
-		}),
-
-		LayoutButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -135, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Layout" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.toggleLayout,
-				Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Change Multi-View Layout. (" .. self.state.layoutMode .. ")",
-				OnHover = function() self.setHoveredButton("Layout") end,
-				OnUnhover = function() self.clearHoveredButton("Layout") end,
-			}),
-		}),
-
-		BackgroundColorButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -270, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Background" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.toggleBackgroundColor,
-				-- Right click to open controls
-				[Roact.Event.MouseButton2Click] = self.openBgControls,
-				Image = "http://www.roblox.com/asset/?id=6026568253",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Change Background (Right Click for Custom)",
-				OnHover = function() self.setHoveredButton("Background") end,
-				OnUnhover = function() self.clearHoveredButton("Background") end,
-			}),
-
-			Controls = self.state.showBgControls and e("Frame", {
+		-- Bolt: Toolbar (Hide in Compact Mode)
+		Toolbar = not self.state.compactMode and Roact.createFragment({
+			ExpandButton = e("Frame", {
 				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(0, -5, 0, 0), -- To the left of the button
-				Size = UDim2.fromOffset(200, 40),
-				BackgroundColor3 = Color3.fromRGB(46, 46, 46),
-				BorderColor3 = Color3.fromRGB(0, 0, 0),
-				ZIndex = 20,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -45, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Expand" and 10 or 2,
 			}, {
-				Input = e("TextBox", {
-					Size = UDim2.new(1, -10, 1, -10),
-					Position = UDim2.fromOffset(5, 5),
-					Text = "",
-					PlaceholderText = "R,G,B or Image ID",
-					ClearTextOnFocus = false,
-					BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-					TextColor3 = Color3.new(1, 1, 1),
-					[Roact.Event.FocusLost] = function(rbx)
-						self.applyCustomBg(rbx.Text)
-					end
+				Button = e(FloatingButton, {
+					Activated = self.expandSelection,
+					Image = "rbxasset://textures/ui/VR/toggle2D.png",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Expand / Collapse",
+					OnHover = function() self.setHoveredButton("Expand") end,
+					OnUnhover = function() self.clearHoveredButton("Expand") end,
+				}),
+			}),
+
+			PopOutButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -90, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "PopOut" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.togglePopOut,
+					Image = "http://www.roblox.com/asset/?id=6026568256",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
+					Tooltip = "Pop Out Window",
+					OnHover = function() self.setHoveredButton("PopOut") end,
+					OnUnhover = function() self.clearHoveredButton("PopOut") end,
+				}),
+			}),
+
+			LayoutButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -135, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Layout" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleLayout,
+					Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Change Multi-View Layout. (" .. self.state.layoutMode .. ")",
+					OnHover = function() self.setHoveredButton("Layout") end,
+					OnUnhover = function() self.clearHoveredButton("Layout") end,
+				}),
+			}),
+
+			BackgroundColorButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -270, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Background" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleBackgroundColor,
+					-- Right click to open controls
+					[Roact.Event.MouseButton2Click] = self.openBgControls,
+					Image = "http://www.roblox.com/asset/?id=6026568253",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Change Background (Right Click for Custom)",
+					OnHover = function() self.setHoveredButton("Background") end,
+					OnUnhover = function() self.clearHoveredButton("Background") end,
+				}),
+
+				Controls = self.state.showBgControls and e("Frame", {
+					AnchorPoint = Vector2.new(1, 1),
+					Position = UDim2.new(0, -5, 0, 0), -- To the left of the button
+					Size = UDim2.fromOffset(200, 40),
+					BackgroundColor3 = Color3.fromRGB(46, 46, 46),
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					ZIndex = 20,
+				}, {
+					Input = e("TextBox", {
+						Size = UDim2.new(1, -10, 1, -10),
+						Position = UDim2.fromOffset(5, 5),
+						Text = "",
+						PlaceholderText = "R,G,B or Image ID",
+						ClearTextOnFocus = false,
+						BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+						TextColor3 = Color3.new(1, 1, 1),
+						[Roact.Event.FocusLost] = function(rbx)
+							self.applyCustomBg(rbx.Text)
+						end
+					})
 				})
-			})
-		}),
+			}),
 
-		StatsButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -180, 0.99),
-			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Stats" and 10 or 2,
-		}, {
-			Button = e(FloatingButton, {
-				Activated = self.toggleStats,
-				Image = "http://www.roblox.com/asset/?id=6031084742",
-				ImageSize = UDim.new(0, 24),
-				Size = UDim.new(0, 40),
-				Tooltip = "Toggle Stats Performance",
-				OnHover = function() self.setHoveredButton("Stats") end,
-				OnUnhover = function() self.clearHoveredButton("Stats") end,
+			StatsButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -180, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Stats" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleStats,
+					Image = "http://www.roblox.com/asset/?id=6031084742",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Toggle Stats Performance",
+					OnHover = function() self.setHoveredButton("Stats") end,
+					OnUnhover = function() self.clearHoveredButton("Stats") end,
+				}),
+			}),
+
+			DebugButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -225, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Debug" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleDebug,
+					Image = "http://www.roblox.com/asset/?id=6026568210",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Toggle Debug Overlay",
+					OnHover = function() self.setHoveredButton("Debug") end,
+					OnUnhover = function() self.clearHoveredButton("Debug") end,
+				}),
+			}),
+
+			InspectorButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -315, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Inspector" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleInspector,
+					Image = "rbxasset://textures/StudioToolbox/Search.png", -- Generic search/eye icon
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = self.expand and ("Inspector: " .. (self.state.showInspector and "ON" or "OFF")) or "Inspector (Only available in Expanded View)",
+					ImageColor3 = self.state.showInspector and Color3.fromRGB(0, 170, 255) or (self.expand and Color3.new(1, 1, 1) or Color3.fromRGB(100, 100, 100)),
+					OnHover = function() self.setHoveredButton("Inspector") end,
+					OnUnhover = function() self.clearHoveredButton("Inspector") end,
+				}),
 			}),
 		}),
 
-		DebugButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
+		CompactButton = e("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -225, 0.99),
+			Position = UDim2.new(0, 5, 0.99, 0), -- Bottom Left
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Debug" and 10 or 2,
+			ZIndex = 100,
 		}, {
 			Button = e(FloatingButton, {
-				Activated = self.toggleDebug,
-				Image = "http://www.roblox.com/asset/?id=6026568210",
+				Activated = self.toggleCompact,
+				Image = "rbxasset://textures/ui/Settings/SettingsIcon.png", -- Placeholder for Zen/Compact
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Toggle Debug Overlay",
-				OnHover = function() self.setHoveredButton("Debug") end,
-				OnUnhover = function() self.clearHoveredButton("Debug") end,
+				ImageColor3 = self.state.compactMode and Color3.fromRGB(0, 255, 0) or Color3.new(1, 1, 1),
+				Tooltip = "Compact / Zen Mode",
+				OnHover = function() self.setHoveredButton("Compact") end,
+				OnUnhover = function() self.clearHoveredButton("Compact") end,
 			}),
 		}),
 
-		InspectorButton = e("Frame", {
-			AnchorPoint = Vector2.new(1, 1),
+		ScreenshotButton = e("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -315, 0.99),
+			Position = UDim2.new(0, 50, 0.99, 0), -- Next to Compact
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = self.state.hoveredButton == "Inspector" and 10 or 2,
+			ZIndex = 100,
 		}, {
 			Button = e(FloatingButton, {
-				Activated = self.toggleInspector,
-				Image = "rbxasset://textures/StudioToolbox/Search.png", -- Generic search/eye icon
+				Activated = self.enterScreenshotMode,
+				Image = "rbxasset://textures/ui/Camera/CameraIcon.png",
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
-				Tooltip = "Inspector: " .. (self.state.showInspector and "ON" or "OFF"),
-				ImageColor3 = self.state.showInspector and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
-				OnHover = function() self.setHoveredButton("Inspector") end,
-				OnUnhover = function() self.clearHoveredButton("Inspector") end,
+				Tooltip = "Screenshot Prep (Zen + Clean BG)",
+				OnHover = function() self.setHoveredButton("Screenshot") end,
+				OnUnhover = function() self.clearHoveredButton("Screenshot") end,
 			}),
 		}),
 
@@ -965,12 +1030,14 @@ function Preview:render()
 			return overlay
 		end)(),
 
-		StoryContainer = e("Frame", {
-			Name = "StoryContainer",
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
-			ZIndex = 1,
-			[Roact.Ref] = self.storyContainerRef,
+		StoryContainer = e(ViewportControls, {}, {
+			Content = e("Frame", {
+				Name = "StoryContainer",
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				ZIndex = 1,
+				[Roact.Ref] = self.storyContainerRef,
+			}),
 		}),
 
 		DebugOverlay = DebugOverlay and e(DebugOverlay, {
