@@ -11,6 +11,8 @@ local ViewportControls = Roact.PureComponent:extend("ViewportControls")
 
 function ViewportControls:init()
 	self.maid = Maid.new()
+	self.ref = Roact.createRef() -- Ref for bounds check
+
 	self:setState({
 		scale = 1,
 		position = Vector2.new(0, 0),
@@ -26,11 +28,23 @@ function ViewportControls:didMount()
 		if not self.props.Enabled then return end -- Check Enabled prop
 
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
-			if not self.isHovered then return end
+			-- Bolt: Use robust bounds check instead of fragile MouseEnter
+			local frame = self.ref:getValue()
+			if not frame then return end
 
-			local delta = input.Position.Z
-			local newScale = math.clamp(self.state.scale + (delta * 0.1), 0.1, 5)
-			self:setState({ scale = newScale })
+			local mousePos = UserInputService:GetMouseLocation()
+			local absPos = frame.AbsolutePosition
+			local absSize = frame.AbsoluteSize
+
+			-- Check if mouse is inside the viewport frame
+			if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+			   mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
+
+				local delta = input.Position.Z
+				local newScale = math.clamp(self.state.scale + (delta * 0.1), 0.1, 5)
+				self:setState({ scale = newScale })
+			end
+
 		elseif input.UserInputType == Enum.UserInputType.MouseMovement then
 			if self.state.isDragging then
 				local currentPos = Vector2.new(input.Position.X, input.Position.Y)
@@ -48,8 +62,20 @@ function ViewportControls:didMount()
 		if not self.props.Enabled then return end -- Check Enabled prop
 
 		if input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
-			self:setState({ isDragging = true })
-			self.lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
+			local frame = self.ref:getValue()
+			if not frame then return end
+
+			-- Check bounds for click start too
+			local mousePos = UserInputService:GetMouseLocation()
+			local absPos = frame.AbsolutePosition
+			local absSize = frame.AbsoluteSize
+
+			if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+			   mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
+
+				self:setState({ isDragging = true })
+				self.lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
+			end
 		end
 	end))
 
@@ -83,7 +109,7 @@ function ViewportControls:render()
 			TextColor3 = Color3.new(1, 1, 1),
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 14,
-			ZIndex = 1000, -- High ZIndex
+			ZIndex = 100, -- High ZIndex relative to container
 			[Roact.Event.Activated] = function()
 				self:setState({ scale = 1, position = Vector2.new(0, 0) })
 			end
@@ -95,9 +121,7 @@ function ViewportControls:render()
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		ClipsDescendants = true, -- Clip content
-		-- Track Hover for Zoom
-		[Roact.Event.MouseEnter] = function() self.isHovered = true end,
-		[Roact.Event.MouseLeave] = function() self.isHovered = false end,
+		[Roact.Ref] = self.ref,
 	}, {
 		Content = e("Frame", {
 			Name = "ZoomContainer",

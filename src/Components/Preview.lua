@@ -86,12 +86,8 @@ function Preview:init()
 	end
 
 	self.forceSoftReset = function()
-		-- Bolt: Soft Reset to clear memory leaks.
-		-- We clear the preview, destroy the maid (unsubscribing everything), and then refresh.
 		self:clearPreview()
-		self:setState({ renderCount = 0 }) -- Reset stats too
 
-		-- Small delay to let things clean up
 		task.delay(0.1, function()
 			self:refreshPreview()
 		end)
