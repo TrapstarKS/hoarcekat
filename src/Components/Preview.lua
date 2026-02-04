@@ -901,6 +901,31 @@ function Preview:render()
 			}),
 		}),
 
+		-- Bolt: QoL - Open Source Button
+		OpenSourceButton = selectedStory and e("Frame", {
+			AnchorPoint = Vector2.new(1, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.99, -45, 0.99), -- Shifted left of SelectButton (-45)
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = self.state.hoveredButton == "OpenSource" and 10 or 2,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = function()
+					local story = self.props.selectedStory
+					if type(story) == "table" then story = story[1] end
+					if story and self.props.Plugin then
+						self.props.Plugin:OpenScript(story)
+					end
+				end,
+				Image = "rbxasset://textures/ui/Tooltip/Edit.png",
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+				Tooltip = "Open Source in Editor",
+				OnHover = function() self.setHoveredButton("OpenSource") end,
+				OnUnhover = function() self.clearHoveredButton("OpenSource") end,
+			}),
+		}),
+
 		-- Bolt: Toolbar
 		Toolbar = Roact.createFragment({
 			ExpandButton = e("Frame", {
