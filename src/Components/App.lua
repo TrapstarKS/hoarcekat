@@ -22,7 +22,6 @@ local function App(props)
 					Left = e(Sidebar),
 					Right = e(Preview, {
 						Plugin = props.Plugin,
-						Mouse = props.Mouse,
 					}),
 				}),
 			})

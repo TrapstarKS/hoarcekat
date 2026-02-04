@@ -806,11 +806,11 @@ function Preview:render()
 		}),
 
 		-- Bolt: Zoom Controls (Device Emulator Style)
-		ZoomControls = (self.state.showZoom and (self.state.zoomScale ~= 1 or self.state.zoomPos.Magnitude > 0)) and e("Frame", {
+		ZoomControls = self.state.showZoom and e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.5, 0, 0, 50), -- Below Device Emulator (10 + 30 + 10 padding)
-			Size = UDim2.fromOffset(140, 28),
+			Position = UDim2.new(0.5, 0, 0, 50), -- Below Device Emulator
+			Size = UDim2.fromOffset(200, 28), -- Wider to fit buttons
 			ZIndex = 50, -- High Z-Index to overlay content
 		}, {
 			Background = e("Frame", {
@@ -826,21 +826,53 @@ function Preview:render()
 			}),
 
 			InfoLabel = e("TextLabel", {
-				Text = string.format("Zoom: %.0f%%", self.state.zoomScale * 100),
-				Size = UDim2.new(0.5, -5, 1, 0),
+				Text = string.format("%.0f%%", self.state.zoomScale * 100),
+				Size = UDim2.new(0, 50, 1, 0),
 				Position = UDim2.fromOffset(5, 0),
 				BackgroundTransparency = 1,
 				TextColor3 = Color3.new(0.9, 0.9, 0.9),
 				TextSize = 14,
 				Font = Enum.Font.SourceSansBold,
-				TextXAlignment = Enum.TextXAlignment.Left,
+				TextXAlignment = Enum.TextXAlignment.Center,
+			}),
+
+			MinusButton = e("TextButton", {
+				Text = "-",
+				Size = UDim2.fromOffset(24, 24),
+				Position = UDim2.fromOffset(60, 2),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 18,
+				Font = Enum.Font.SourceSansBold,
+				[Roact.Event.Activated] = function()
+					local newScale = math.max(self.state.zoomScale - 0.1, 0.1)
+					self.onZoomChange(newScale, self.state.zoomPos)
+				end,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			}),
+
+			PlusButton = e("TextButton", {
+				Text = "+",
+				Size = UDim2.fromOffset(24, 24),
+				Position = UDim2.fromOffset(90, 2),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 18,
+				Font = Enum.Font.SourceSansBold,
+				[Roact.Event.Activated] = function()
+					local newScale = math.min(self.state.zoomScale + 0.1, 5)
+					self.onZoomChange(newScale, self.state.zoomPos)
+				end,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
 			}),
 
 			ResetButton = e("TextButton", {
 				Text = "Reset",
-				Size = UDim2.new(0.4, 0, 0.8, 0),
-				Position = UDim2.new(1, -5, 0.5, 0),
-				AnchorPoint = Vector2.new(1, 0.5),
+				Size = UDim2.new(0, 50, 1, -4),
+				Position = UDim2.new(1, -2, 0, 2),
+				AnchorPoint = Vector2.new(1, 0),
 				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
 				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 12,
@@ -1093,7 +1125,6 @@ function Preview:render()
 			Scale = self.state.zoomScale,
 			Position = self.state.zoomPos,
 			OnChange = self.onZoomChange,
-			Mouse = self.props.Mouse,
 		}, {
 			Content = e("Frame", {
 				Name = "StoryContainer",
