@@ -330,6 +330,12 @@ function Preview:init()
 		-- If it's too small (e.g. initial render 0x0), don't set it yet
 		if scale <= 0 then return end
 
+		-- Bolt: Prevent excessively tiny scaling when user picks HD on a small screen
+		-- If scale is < 0.1, it's probably unreadable. But "Fit" means Fit.
+		-- User said "muito pequeno". If viewport is tiny, Fit IS tiny.
+		-- But maybe they want to start at 100%?
+		-- No, DeviceEmulator contract is "Fit to Screen".
+
 		self.deviceScaleRef.Scale = scale
 	end
 end
@@ -912,12 +918,12 @@ function Preview:render()
 			})
 		}),
 
-		-- Bolt: Zoom Controls (Device Emulator Style)
+		-- Bolt: Zoom Controls (Device Emulator Style - Horizontal Layout)
 		ZoomControls = self.state.showZoom and e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
 			Position = UDim2.new(0.5, 0, 0, 50), -- Below Device Emulator
-			Size = UDim2.fromOffset(200, 28), -- Wider to fit buttons
+			Size = UDim2.fromOffset(200, 28),
 			ZIndex = 50, -- High Z-Index to overlay content
 		}, {
 			Background = e("Frame", {
@@ -932,25 +938,32 @@ function Preview:render()
 				}),
 			}),
 
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 5),
+			}),
+
 			InfoLabel = e("TextLabel", {
 				Text = string.format("%.0f%%", self.state.zoomScale * 100),
-				Size = UDim2.new(0, 50, 1, 0),
-				Position = UDim2.fromOffset(5, 0),
+				Size = UDim2.fromOffset(50, 24),
 				BackgroundTransparency = 1,
 				TextColor3 = Color3.new(0.9, 0.9, 0.9),
 				TextSize = 14,
 				Font = Enum.Font.SourceSansBold,
 				TextXAlignment = Enum.TextXAlignment.Center,
+				LayoutOrder = 1,
 			}),
 
 			MinusButton = e("TextButton", {
 				Text = "-",
 				Size = UDim2.fromOffset(24, 24),
-				Position = UDim2.fromOffset(60, 2),
 				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
 				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 18,
 				Font = Enum.Font.SourceSansBold,
+				LayoutOrder = 2,
 				[Roact.Event.Activated] = function()
 					local newScale = math.max(self.state.zoomScale - 0.1, 0.1)
 					self.onZoomChange(newScale, self.state.zoomPos)
@@ -962,11 +975,11 @@ function Preview:render()
 			PlusButton = e("TextButton", {
 				Text = "+",
 				Size = UDim2.fromOffset(24, 24),
-				Position = UDim2.fromOffset(90, 2),
 				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
 				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 18,
 				Font = Enum.Font.SourceSansBold,
+				LayoutOrder = 3,
 				[Roact.Event.Activated] = function()
 					local newScale = math.min(self.state.zoomScale + 0.1, 5)
 					self.onZoomChange(newScale, self.state.zoomPos)
@@ -977,13 +990,12 @@ function Preview:render()
 
 			ResetButton = e("TextButton", {
 				Text = "Reset",
-				Size = UDim2.new(0, 50, 1, -4),
-				Position = UDim2.new(1, -2, 0, 2),
-				AnchorPoint = Vector2.new(1, 0),
+				Size = UDim2.fromOffset(50, 24),
 				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
 				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 12,
 				Font = Enum.Font.SourceSans,
+				LayoutOrder = 4,
 				[Roact.Event.Activated] = self.resetZoom,
 			}, {
 				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
