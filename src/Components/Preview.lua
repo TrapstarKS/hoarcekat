@@ -33,6 +33,8 @@ function Preview:init()
 	self.display = display
 
 	self.expand = false
+	self.isRefreshing = false
+	self.pendingRefresh = false
 
 	self.openSelection = function()
 		-- Select all targets
@@ -102,11 +104,8 @@ function Preview:init()
 	end
 
 	self.forceSoftReset = function()
-		self:clearPreview()
-
-		task.delay(0.1, function()
-			self:refreshPreview()
-		end)
+		-- Bolt: Force a refresh via the async lock
+		self:refreshPreview()
 	end
 
 	self.setHoveredButton = function(key)
@@ -414,161 +413,167 @@ function Preview:updateDisplay()
 end
 
 function Preview:refreshPreview()
-	-- Bolt: Debounce refresh to avoid rapid reloads (infinite loops)
-	local now = os.clock()
-	if self.lastRefreshTime and (now - self.lastRefreshTime < 0.1) then
-		return
-	end
-	self.lastRefreshTime = now
+	-- Bolt: Async Lock to prevent race conditions during yielding cleanups.
+	-- If a refresh is already in progress, we mark a pending refresh and return.
+	-- The existing loop will pick it up after it finishes the current cycle.
 
-	-- Support list of stories or single story
-	local selectedStories = self.props.selectedStory
-	if type(selectedStories) ~= "table" or selectedStories.ClassName then
-		-- Single instance or nil
-		selectedStories = {selectedStories}
-	end
-
-	if #selectedStories == 0 or not selectedStories[1] then
-		self:clearPreview()
+	if self.isRefreshing then
+		self.pendingRefresh = true
 		return
 	end
 
-	self:clearPreview()
-	self:cancelError()
+	self.isRefreshing = true
+	self.pendingRefresh = false
 
-	local newStates = {}
+	task.spawn(function()
+		while true do
+			-- Consume the pending flag at the start of the loop
+			self.pendingRefresh = false
 
-	for i, story in ipairs(selectedStories) do
-		local err, nextState = self:prepareState(story)
-		if err then
-			self:setError(err)
-			-- Cleanup already prepared states
-			for _, s in pairs(newStates) do
-				s:destroy()
+			-- 1. Clean up existing preview (This might yield if user has cleanup code)
+			self:clearPreview()
+
+			-- 2. Check if we should mount the new preview
+			-- Validate props inside the thread to get latest values
+			local selectedStories = self.props.selectedStory
+			if type(selectedStories) ~= "table" or selectedStories.ClassName then
+				selectedStories = {selectedStories}
 			end
-			return
+
+			if #selectedStories > 0 and selectedStories[1] then
+				self:cancelError()
+				local newStates = {}
+				local mountSuccess = true
+
+				for i, story in ipairs(selectedStories) do
+					local err, nextState = self:prepareState(story)
+					if err then
+						self:setError(err)
+						-- Cleanup already prepared states
+						for _, s in pairs(newStates) do
+							s:destroy()
+						end
+						mountSuccess = false
+						break
+					end
+
+					-- Position the targets if multiple
+					if #selectedStories > 1 then
+						if self.state.layoutMode == "Split" then
+							nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
+							nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
+							nextState.target.BorderSizePixel = 1
+							nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
+						else -- Stack
+							nextState.target.Size = UDim2.new(1, 0, 1, 0)
+							nextState.target.Position = UDim2.new(0, 0, 0, 0)
+							nextState.target.BackgroundTransparency = 1
+							nextState.target.BorderSizePixel = 0
+						end
+					end
+
+					-- Device Emulation (Applied to all targets)
+					-- Bolt: Always wrap to apply background color, even if not emulating size (fit mode)
+					local dSize = self.state.deviceSize
+					local bgColors = {
+						Color3.fromRGB(0, 0, 0),       -- Black
+						Color3.fromRGB(255, 255, 255), -- White
+						Color3.fromRGB(46, 46, 46),    -- Dark Grey
+						Color3.fromRGB(240, 240, 240), -- Light Grey
+					}
+					local bgColor = bgColors[self.state.backgroundColorIndex]
+					local bgImage = nil
+
+					if self.state.backgroundColorIndex == 0 then
+						if self.state.customBgColor then
+							bgColor = self.state.customBgColor
+						elseif self.state.customBgImage then
+							bgColor = Color3.new(1, 1, 1)
+							bgImage = self.state.customBgImage
+						else
+							bgColor = bgColors[1] -- Fallback
+						end
+					elseif not bgColor then
+						bgColor = bgColors[1]
+					end
+
+					-- Bolt: Disable emulation wrapper/background when expanded or popped out to avoid obstruction
+					local isExpandedMode = self.expand or self.state.isPoppedOut
+
+					if dSize and not isExpandedMode then
+						local container = Instance.new("Frame")
+						container.Name = "DeviceContainer"
+						container.BackgroundTransparency = 1
+						container.Size = UDim2.fromScale(1, 1)
+
+						local wrapper = Instance.new("ImageLabel") -- Changed to ImageLabel to support ImageID
+						wrapper.Name = "DeviceWrapper"
+						wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
+						wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
+						wrapper.Position = UDim2.fromScale(0.5, 0.5)
+
+						wrapper.BackgroundColor3 = bgColor
+						if bgImage then
+							wrapper.Image = bgImage
+							wrapper.BackgroundTransparency = 0
+						else
+							wrapper.Image = ""
+							wrapper.BackgroundTransparency = 0
+						end
+
+						wrapper.BorderSizePixel = 2
+						wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
+						wrapper.ClipsDescendants = true
+						wrapper.Parent = container
+
+						local scale = Instance.new("UIScale")
+						scale.Parent = wrapper
+						self.deviceScaleRef = scale
+						self.updateScale()
+
+						nextState.target.Parent = wrapper
+						nextState.target = container -- Replace target with container for display update
+					elseif not isExpandedMode then
+						-- No specific device size (Fit mode)
+						-- We still want to apply the background color behind the story
+						local container = Instance.new("ImageLabel") -- Changed to ImageLabel
+						container.Name = "FitContainer"
+						container.Size = UDim2.fromScale(1, 1)
+						container.BackgroundColor3 = bgColor
+						if bgImage then
+							container.Image = bgImage
+							container.BackgroundTransparency = 0
+						else
+							container.Image = ""
+							container.BackgroundTransparency = 0
+						end
+						container.BorderSizePixel = 0
+
+						nextState.target.Parent = container
+						nextState.target = container
+					end
+
+					table.insert(newStates, nextState)
+				end
+
+				if mountSuccess then
+					self.currentPreview = newStates
+					self:updateDisplay()
+					self:setState({
+						renderCount = self.state.renderCount + 1
+					})
+				end
+			end
+
+			-- 3. Check if another refresh request came in while we were working
+			if not self.pendingRefresh then
+				break
+			end
+			-- Loop again to process the pending refresh (which effectively re-clears and re-mounts)
 		end
 
-		-- Position the targets if multiple
-		if #selectedStories > 1 then
-			if self.state.layoutMode == "Split" then
-				nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
-				nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
-				nextState.target.BorderSizePixel = 1
-				nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
-			else -- Stack
-				nextState.target.Size = UDim2.new(1, 0, 1, 0)
-				nextState.target.Position = UDim2.new(0, 0, 0, 0)
-				nextState.target.BackgroundTransparency = 1 -- Ensure stacking works visually
-				nextState.target.BorderSizePixel = 0
-			end
-		end
-
-		-- Device Emulation (Applied to all targets)
-		-- Bolt: Always wrap to apply background color, even if not emulating size (fit mode)
-		local dSize = self.state.deviceSize
-		local bgColors = {
-			Color3.fromRGB(0, 0, 0),       -- Black
-			Color3.fromRGB(255, 255, 255), -- White
-			Color3.fromRGB(46, 46, 46),    -- Dark Grey
-			Color3.fromRGB(240, 240, 240), -- Light Grey
-		}
-		local bgColor = bgColors[self.state.backgroundColorIndex]
-		local bgImage = nil
-
-		if self.state.backgroundColorIndex == 0 then
-			if self.state.customBgColor then
-				bgColor = self.state.customBgColor
-			elseif self.state.customBgImage then
-				bgColor = Color3.new(1, 1, 1)
-				bgImage = self.state.customBgImage
-			else
-				bgColor = bgColors[1] -- Fallback
-			end
-		elseif not bgColor then
-			bgColor = bgColors[1]
-		end
-
-		-- Bolt: Disable emulation wrapper/background when expanded or popped out to avoid obstruction
-		local isExpandedMode = self.expand or self.state.isPoppedOut
-
-		if dSize and not isExpandedMode then
-			local container = Instance.new("Frame")
-			container.Name = "DeviceContainer"
-			container.BackgroundTransparency = 1
-			container.Size = UDim2.fromScale(1, 1)
-
-			local wrapper = Instance.new("ImageLabel") -- Changed to ImageLabel to support ImageID
-			wrapper.Name = "DeviceWrapper"
-			wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
-			wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
-			wrapper.Position = UDim2.fromScale(0.5, 0.5)
-
-			wrapper.BackgroundColor3 = bgColor
-			if bgImage then
-				wrapper.Image = bgImage
-				wrapper.BackgroundTransparency = 0
-			else
-				wrapper.Image = ""
-				wrapper.BackgroundTransparency = 0
-			end
-
-			wrapper.BorderSizePixel = 2
-			wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
-			wrapper.ClipsDescendants = true
-			wrapper.Parent = container
-
-			local scale = Instance.new("UIScale")
-			scale.Parent = wrapper
-			self.deviceScaleRef = scale
-			self.updateScale()
-
-			nextState.target.Parent = wrapper
-			nextState.target = container -- Replace target with container for display update
-		elseif not isExpandedMode then
-			-- No specific device size (Fit mode)
-			-- We still want to apply the background color behind the story
-			local container = Instance.new("ImageLabel") -- Changed to ImageLabel
-			container.Name = "FitContainer"
-			container.Size = UDim2.fromScale(1, 1)
-			container.BackgroundColor3 = bgColor
-			if bgImage then
-				container.Image = bgImage
-				container.BackgroundTransparency = 0
-			else
-				container.Image = ""
-				container.BackgroundTransparency = 0
-			end
-			container.BorderSizePixel = 0
-
-			nextState.target.Parent = container
-			nextState.target = container
-		end
-
-		table.insert(newStates, nextState)
-	end
-
-	self.currentPreview = newStates
-	self:updateDisplay()
-
-	-- We can't setState inside refreshPreview if it's called from didUpdate
-	-- without checking conditions, otherwise we loop.
-	-- But refreshPreview IS called from didUpdate (guarded now).
-	-- And it's called from hot-reload (monkeyRequire).
-
-	-- We want to bump renderCount whenever the story is REBUILT.
-	-- If we just built it, we can safely setState if we are not in the middle of a render cycle?
-	-- Actually, setState inside didUpdate is fine IF guarded.
-	-- But refreshPreview sets state at the end.
-
-	-- The issue was: didUpdate -> refreshPreview -> setState -> didUpdate -> ...
-	-- Now didUpdate is guarded by props check.
-	-- So calling setState here should be fine, as it will trigger didUpdate,
-	-- but props won't have changed, so it won't call refreshPreview again.
-
-	self:setState({
-		renderCount = self.state.renderCount + 1
-	})
+		self.isRefreshing = false
+	end)
 end
 
 function Preview:clearPreview()
@@ -600,6 +605,9 @@ function Preview:prepareState(selectedStory)
 	}
 
 	function state:destroy()
+		if self.destroyed then return end
+		self.destroyed = true
+
 		-- Bolt: Ensure proper cleanup order.
 		-- 1. Run user cleanup (disconnects user events)
 		if self.cleanup then
