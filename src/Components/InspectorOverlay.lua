@@ -1,0 +1,372 @@
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Selection = game:GetService("Selection")
+
+local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
+
+local Roact = require(Hoarcekat.Vendor.Roact)
+local Maid = require(Hoarcekat.Plugin.Maid)
+
+local e = Roact.createElement
+
+local InspectorOverlay = Roact.PureComponent:extend("InspectorOverlay")
+
+function InspectorOverlay:init()
+	self.maid = Maid.new()
+	self:setState({
+		hoveredInstance = nil,
+		hoveredProps = {}, -- { ClassName, Size, Position, Padding }
+	})
+
+	self.updateHover = function(input)
+		local target = self.props.Target
+		if not target then return end
+
+		local mousePos = input.Position
+		self:findInstanceAt(target, Vector2.new(mousePos.X, mousePos.Y))
+	end
+end
+
+function InspectorOverlay:findInstanceAt(root, pos)
+	local bestCandidate = nil
+	local bestZIndex = -math.huge
+	local bestDepth = -1
+
+	local function scan(instance, depth)
+		-- Bolt: Ignore self-detection of the Inspector UI itself!
+		if instance.Name == "InspectorHighlight" or instance.Name == "InspectorTooltip" then return end
+
+		-- Bolt: Ignore internal Hoarcekat UI containers to prevent inspecting the wrapper itself
+		if instance.Name == "DeviceWrapper" or instance.Name == "DeviceContainer" or instance.Name == "FitContainer" or instance.Name == "StoryContainer" or instance.Name == "HoarcekatDisplay" then
+			-- We still want to scan their children (the user's story), but we don't want to highlight the container itself.
+			for _, child in ipairs(instance:GetChildren()) do
+				scan(child, depth + 1)
+			end
+			return
+		end
+
+		-- Debug: Check what we are scanning
+		-- print("Scanning:", instance.Name, instance.ClassName, depth)
+
+		-- Handle ScreenGui/Roots which are not GuiObjects but have children
+		if not instance:IsA("GuiObject") then
+			if instance:IsA("ScreenGui") or instance:IsA("Folder") or instance:IsA("Frame") or instance == root then
+				for _, child in ipairs(instance:GetChildren()) do
+					scan(child, depth + 1)
+				end
+			end
+			return
+		end
+
+		if not instance.Visible then return end
+
+		local absPos = instance.AbsolutePosition
+		local absSize = instance.AbsoluteSize
+
+		-- print("Checking:", instance.Name, "Pos:", absPos, "Size:", absSize, "Mouse:", pos)
+
+		if pos.X >= absPos.X and pos.X <= absPos.X + absSize.X and
+		   pos.Y >= absPos.Y and pos.Y <= absPos.Y + absSize.Y then
+
+			-- Basic ZIndex check. We prefer deeper elements (children on top of parents)
+			if depth >= bestDepth then
+				bestCandidate = instance
+				bestDepth = depth
+				-- print("New Candidate:", instance.Name)
+			end
+
+			for _, child in ipairs(instance:GetChildren()) do
+				scan(child, depth + 1)
+			end
+		end
+	end
+
+	scan(root, 0)
+
+	if bestCandidate ~= self.state.hoveredInstance then
+		-- Debug print (Uncomment if needed)
+		-- if bestCandidate then warn("Inspector Hover:", bestCandidate:GetFullName()) end
+
+		if bestCandidate then
+			local padding = bestCandidate:FindFirstChildWhichIsA("UIPadding")
+			self:setState({
+				hoveredInstance = bestCandidate,
+				hoveredProps = {
+					ClassName = bestCandidate.ClassName,
+					Name = bestCandidate.Name,
+					Size = string.format("%.0f, %.0f", bestCandidate.AbsoluteSize.X, bestCandidate.AbsoluteSize.Y),
+					Position = string.format("%.0f, %.0f", bestCandidate.AbsolutePosition.X, bestCandidate.AbsolutePosition.Y),
+					Padding = padding and string.format("L:%d R:%d T:%d B:%d", padding.PaddingLeft.Offset, padding.PaddingRight.Offset, padding.PaddingTop.Offset, padding.PaddingBottom.Offset) or "None",
+				}
+			})
+		else
+			self:setState({
+				hoveredInstance = Roact.None,
+				hoveredProps = {}
+			})
+		end
+	end
+end
+
+function InspectorOverlay:didMount()
+	self.lastUpdate = 0
+
+	-- Mouse Movement (Hover)
+	self.maid:GiveTask(UserInputService.InputChanged:Connect(function(input)
+		if not self.props.Enabled then return end
+
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			-- Bolt: Throttle inspector updates to ~30 FPS to save CPU
+			local now = os.clock()
+			if now - self.lastUpdate > 0.033 then
+				self.lastUpdate = now
+				self.updateHover(input)
+			end
+		end
+	end))
+
+	-- Click (Select)
+	self.maid:GiveTask(UserInputService.InputBegan:Connect(function(input)
+		if not self.props.Enabled then return end
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if self.state.hoveredInstance and self.state.hoveredInstance ~= Roact.None then
+				-- Bolt: Feature - Click to select in Explorer
+				Selection:Set({self.state.hoveredInstance})
+				-- print("Selected:", self.state.hoveredInstance)
+			end
+		end
+	end))
+end
+
+function InspectorOverlay:willUnmount()
+	self.maid:DoCleaning()
+end
+
+function InspectorOverlay:render()
+	if not self.props.Enabled then return nil end
+
+	local hi = self.state.hoveredInstance
+	local props = self.state.hoveredProps
+	local target = self.props.Target
+
+	local highlight = nil
+	local tooltip = nil
+	local guides = nil
+
+	if hi and target then
+		-- Bolt: Safely get AbsolutePosition for Target (handles ScreenGui/PluginGui)
+		local tAbs = Vector2.new(0, 0)
+		if target:IsA("GuiObject") then
+			tAbs = target.AbsolutePosition
+		end
+
+		local hAbs = hi.AbsolutePosition
+		local hSize = hi.AbsoluteSize
+		local relX = hAbs.X - tAbs.X
+		local relY = hAbs.Y - tAbs.Y
+
+		highlight = e("Frame", {
+			Name = "InspectorHighlight", -- Bolt: Key for ignoring in scan
+			BackgroundTransparency = 0.8,
+			BackgroundColor3 = Color3.fromRGB(0, 170, 255),
+			BorderSizePixel = 2,
+			BorderColor3 = Color3.fromRGB(0, 170, 255),
+			Size = UDim2.fromOffset(hSize.X, hSize.Y),
+			Position = UDim2.fromOffset(relX, relY),
+			ZIndex = 2147483647, -- Max ZIndex to ensure it's on top
+		})
+
+		-- Smart Guides Logic
+		local parent = hi.Parent
+		if parent and (parent:IsA("GuiObject") or parent == target) then
+			local pAbs = Vector2.new(0, 0)
+			local pSize = Vector2.new(0, 0)
+
+			if parent:IsA("GuiObject") then
+				pAbs = parent.AbsolutePosition
+				pSize = parent.AbsoluteSize
+			elseif parent == target and target:IsA("GuiObject") then
+				pAbs = target.AbsolutePosition
+				pSize = target.AbsoluteSize
+			elseif parent == target then
+				-- Target is LayerCollector, assume full screen?
+				if target:IsA("ScreenGui") or target:IsA("DockWidgetPluginGui") then
+					pAbs = Vector2.new(0, 0) -- Relative to target root
+					-- Let's skip guides if parent is a Root Layer to avoid visual clutter/bugs
+					parent = nil
+				end
+			end
+
+			if parent then
+				local distTop = math.floor(hAbs.Y - pAbs.Y)
+				local distLeft = math.floor(hAbs.X - pAbs.X)
+				local distRight = math.floor((pAbs.X + pSize.X) - (hAbs.X + hSize.X))
+				local distBottom = math.floor((pAbs.Y + pSize.Y) - (hAbs.Y + hSize.Y))
+
+				local guideColor = Color3.fromRGB(255, 80, 80)
+
+				local midX = relX + (hSize.X / 2)
+				local midY = relY + (hSize.Y / 2)
+
+				local THICKNESS = 2 -- Bolt: Increased visibility
+
+				guides = e("Folder", {}, {
+					Top = distTop > 0 and e("Frame", {
+						Name = "GuideTop",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, THICKNESS, 0, distTop),
+						Position = UDim2.fromOffset(midX - (THICKNESS/2), relY - distTop),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distTop),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0, 4, 0.5, -7),
+							TextXAlignment = Enum.TextXAlignment.Left,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
+							ZIndex = 2147483647,
+						})
+					}),
+					Bottom = distBottom > 0 and e("Frame", {
+						Name = "GuideBottom",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, THICKNESS, 0, distBottom),
+						Position = UDim2.fromOffset(midX - (THICKNESS/2), relY + hSize.Y),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distBottom),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0, 4, 0.5, -7),
+							TextXAlignment = Enum.TextXAlignment.Left,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
+							ZIndex = 2147483647,
+						})
+					}),
+					Left = distLeft > 0 and e("Frame", {
+						Name = "GuideLeft",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, distLeft, 0, THICKNESS),
+						Position = UDim2.fromOffset(relX - distLeft, midY - (THICKNESS/2)),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distLeft),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0.5, -15, 0, -16),
+							TextXAlignment = Enum.TextXAlignment.Center,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
+							ZIndex = 2147483647,
+						})
+					}),
+					Right = distRight > 0 and e("Frame", {
+						Name = "GuideRight",
+						BackgroundColor3 = guideColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, distRight, 0, THICKNESS),
+						Position = UDim2.fromOffset(relX + hSize.X, midY - (THICKNESS/2)),
+						ZIndex = 2147483646,
+					}, {
+						Label = e("TextLabel", {
+							Text = tostring(distRight),
+							TextColor3 = guideColor,
+							TextStrokeTransparency = 0,
+							TextStrokeColor3 = Color3.new(0,0,0),
+							BackgroundTransparency = 1,
+							Size = UDim2.new(0, 30, 0, 14),
+							Position = UDim2.new(0.5, -15, 0, -16),
+							TextXAlignment = Enum.TextXAlignment.Center,
+							TextSize = 14,
+							Font = Enum.Font.SourceSansBold,
+							ZIndex = 2147483647,
+						})
+					})
+				})
+			end
+		end
+
+		tooltip = e("Frame", {
+			Name = "InspectorTooltip", -- Bolt: Key for ignoring in scan
+			AutomaticSize = Enum.AutomaticSize.XY,
+			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+			BorderColor3 = Color3.fromRGB(100, 100, 100),
+			Position = UDim2.fromOffset(relX, relY - 80), -- Above element
+			ZIndex = 2147483647,
+		}, {
+			UIPadding = e("UIPadding", {
+				PaddingTop = UDim.new(0, 5),
+				PaddingBottom = UDim.new(0, 5),
+				PaddingLeft = UDim.new(0, 5),
+				PaddingRight = UDim.new(0, 5),
+			}),
+			UIListLayout = e("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 2),
+			}),
+			NameLabel = e("TextLabel", {
+				Text = props.Name .. " (" .. props.ClassName .. ")",
+				TextColor3 = Color3.fromRGB(255, 255, 255),
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 14,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 1,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+			SizeLabel = e("TextLabel", {
+				Text = "Size: " .. props.Size,
+				TextColor3 = Color3.fromRGB(200, 200, 200),
+				Font = Enum.Font.Code,
+				TextSize = 12,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 2,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+			PadLabel = e("TextLabel", {
+				Text = "Pad: " .. props.Padding,
+				TextColor3 = Color3.fromRGB(200, 200, 200),
+				Font = Enum.Font.Code,
+				TextSize = 12,
+				AutomaticSize = Enum.AutomaticSize.XY,
+				BackgroundTransparency = 1,
+				LayoutOrder = 3,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+		})
+	end
+
+	if self.props.Target then
+		return e(Roact.Portal, {
+			target = self.props.Target,
+		}, {
+			Highlight = highlight,
+			Guides = guides,
+			Tooltip = tooltip
+		})
+	else
+		return nil
+	end
+end
+
+return InspectorOverlay

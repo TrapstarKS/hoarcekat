@@ -6,6 +6,11 @@ local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
 local Assets = require(Hoarcekat.Plugin.Assets)
 local EventConnection = require(script.Parent.EventConnection)
 local FloatingButton = require(script.Parent.FloatingButton)
+local StatsOverlay = require(script.Parent.StatsOverlay)
+local DebugOverlay = require(script.Parent.DebugOverlay)
+local InspectorOverlay = require(script.Parent.InspectorOverlay)
+local ViewportControls = require(script.Parent.ViewportControls)
+local DeviceEmulator = require(script.Parent.DeviceEmulator)
 local Maid = require(Hoarcekat.Plugin.Maid)
 local Roact = require(Hoarcekat.Vendor.Roact)
 local RoactRodux = require(Hoarcekat.Vendor.RoactRodux)
@@ -17,8 +22,9 @@ local Preview = Roact.PureComponent:extend("Preview")
 
 function Preview:init()
 	self.rootRef = Roact.createRef()
+	self.storyContainerRef = Roact.createRef()
 
-	self.currentPreview = nil
+	self.currentPreview = nil -- { state1, state2? }
 	self.errorID = 0
 
 	local display = Instance.new("ScreenGui")
@@ -27,10 +33,27 @@ function Preview:init()
 	self.display = display
 
 	self.expand = false
+	self.isRefreshing = false
+	self.pendingRefresh = false
 
 	self.openSelection = function()
-		if self.currentPreview and self.currentPreview.target then
-			Selection:Set({ self.currentPreview.target })
+		-- Select all targets
+		local selection = {}
+		if self.currentPreview then
+			if self.currentPreview.target then
+				table.insert(selection, self.currentPreview.target)
+			elseif type(self.currentPreview) == "table" then
+				-- Assuming new structure for multi-preview
+				for _, state in pairs(self.currentPreview) do
+					if state.target then
+						table.insert(selection, state.target)
+					end
+				end
+			end
+		end
+
+		if #selection > 0 then
+			Selection:Set(selection)
 		end
 	end
 
@@ -38,7 +61,281 @@ function Preview:init()
 		self.expand = not self.expand
 		self.display.Parent = self.expand and CoreGui or nil
 
-		self:updateDisplay()
+		self:refreshPreview()
+	end
+
+	self.state = {
+		showStats = false,
+		showDebug = false,
+		showInspector = false,
+		showZoom = false, -- Bolt: Zoom Mode Toggle
+		zoomScale = 1, -- Controlled Zoom State
+		zoomPos = Vector2.new(0, 0), -- Controlled Zoom Position
+		renderCount = 0,
+		layoutMode = "Stack", -- "Split" or "Stack" (Default: Stack)
+		deviceSize = nil, -- Vector2 or nil
+		deviceName = nil, -- Saved device name
+		isPoppedOut = false,
+		backgroundColorIndex = 1,
+		hoveredButton = nil,
+		customBgColor = nil, -- For custom settings
+		customBgImage = nil,
+		showBgControls = false,
+	}
+
+	self.toggleZoom = function()
+		self:setState({
+			showZoom = not self.state.showZoom
+		})
+	end
+
+	self.onZoomChange = function(scale, pos)
+		self:setState({
+			zoomScale = scale,
+			zoomPos = pos
+		})
+	end
+
+	self.resetZoom = function()
+		self:setState({
+			zoomScale = 1,
+			zoomPos = Vector2.new(0, 0)
+		})
+	end
+
+	self.forceSoftReset = function()
+		-- Bolt: Force a refresh via the async lock
+		self:refreshPreview()
+	end
+
+	self.setHoveredButton = function(key)
+		self:setState({
+			hoveredButton = key
+		})
+	end
+
+	self.clearHoveredButton = function(key)
+		if self.state.hoveredButton == key then
+			self:setState({
+				hoveredButton = Roact.None
+			})
+		end
+	end
+
+	-- Load settings
+	if self.props.Plugin then
+		task.spawn(function()
+			-- Load Device Name
+			local successDevice, savedName = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_DeviceName")
+			end)
+			if successDevice and savedName then
+				self:setState({ deviceName = savedName })
+			end
+
+			-- Load Layout Mode
+			local successLayout, savedLayout = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_LayoutMode")
+			end)
+			if successLayout and savedLayout and (savedLayout == "Split" or savedLayout == "Stack") then
+				self:setState({ layoutMode = savedLayout })
+			end
+
+			-- Load Custom BG
+			local successBg, savedBg = pcall(function()
+				return self.props.Plugin:GetSetting("Hoarcekat_CustomBg")
+			end)
+			if successBg and savedBg then
+				-- Saved as string "r,g,b" or "imageid"
+				if savedBg:match("^%d+,%d+,%d+$") then
+					local r, g, b = savedBg:match("^(%d+),(%d+),(%d+)$")
+					self:setState({
+						customBgColor = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)),
+						backgroundColorIndex = 0 -- 0 indicates custom
+					})
+				elseif savedBg:len() > 0 then
+					self:setState({
+						customBgImage = savedBg,
+						backgroundColorIndex = 0
+					})
+				end
+			end
+		end)
+	end
+
+	self.toggleBackgroundColor = function()
+		if self.state.showBgControls then
+			self:setState({ showBgControls = false })
+			return
+		end
+
+		local colors = {
+			Color3.fromRGB(0, 0, 0),       -- Black
+			Color3.fromRGB(255, 255, 255), -- White
+			Color3.fromRGB(46, 46, 46),    -- Dark Grey (Roblox Dark)
+			Color3.fromRGB(240, 240, 240), -- Light Grey (Roblox Light)
+		}
+
+		local nextIndex = (self.state.backgroundColorIndex % #colors) + 1
+		self:setState({
+			backgroundColorIndex = nextIndex,
+			customBgColor = nil,
+			customBgImage = nil,
+		})
+	end
+
+	self.openBgControls = function()
+		self:setState({
+			showBgControls = not self.state.showBgControls
+		})
+	end
+
+	self.applyCustomBg = function(text)
+		if text:match("^%d+,%d+,%d+$") then
+			local r, g, b = text:match("^(%d+),(%d+),(%d+)$")
+			local col = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b))
+			self:setState({
+				customBgColor = col,
+				customBgImage = nil,
+				backgroundColorIndex = 0,
+				showBgControls = false
+			})
+			if self.props.Plugin then
+				pcall(function() self.props.Plugin:SetSetting("Hoarcekat_CustomBg", text) end)
+			end
+		else
+			-- Assume Image ID
+			local id = text
+			if not id:match("^rbxassetid://") and not id:match("^http") and id:match("^%d+$") then
+				id = "rbxassetid://" .. id
+			end
+
+			self:setState({
+				customBgImage = id,
+				customBgColor = nil,
+				backgroundColorIndex = 0,
+				showBgControls = false
+			})
+			if self.props.Plugin then
+				pcall(function() self.props.Plugin:SetSetting("Hoarcekat_CustomBg", id) end)
+			end
+		end
+	end
+
+	self.popOutWidget = nil
+	self.togglePopOut = function()
+		if not self.props.Plugin then return end
+
+		if not self.popOutWidget then
+			local widget = self.props.Plugin:CreateDockWidgetPluginGui(
+				"HoarcekatPreviewPopOut_v2", -- Changed ID to force new widget creation if old one is stuck
+				DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 800, 600)
+			)
+			widget.Title = "Hoarcekat Preview"
+			widget.Name = "HoarcekatPreviewPopOut"
+			widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+			-- Bolt: Ensure we listen to the widget's close event effectively
+			widget:GetPropertyChangedSignal("Enabled"):Connect(function()
+				-- Only update state if it actually changed to avoid cycles
+				if self.state.isPoppedOut ~= widget.Enabled then
+					self:setState({
+						isPoppedOut = widget.Enabled
+					})
+				end
+			end)
+
+			self.popOutWidget = widget
+		end
+
+		-- Explicitly set enabled state
+		self.popOutWidget.Enabled = not self.popOutWidget.Enabled
+
+		-- Force state update immediately for responsiveness, though signal will also fire
+		self:setState({
+			isPoppedOut = self.popOutWidget.Enabled
+		})
+	end
+
+	self.updateDeviceSize = function(size, device)
+		self:setState({
+			deviceSize = size,
+			deviceName = device and device.Name
+		})
+
+		if device and self.props.Plugin then
+			pcall(function()
+				self.props.Plugin:SetSetting("Hoarcekat_DeviceName", device.Name)
+			end)
+		end
+	end
+
+	self.toggleStats = function()
+		self:setState({
+			showStats = not self.state.showStats,
+		})
+	end
+
+	self.toggleDebug = function()
+		self:setState({
+			showDebug = not self.state.showDebug,
+		})
+	end
+
+	self.toggleInspector = function()
+		if not self.expand then
+			-- Bolt: Inspector is restricted to Expanded view
+			return
+		end
+		self:setState({
+			showInspector = not self.state.showInspector
+		})
+	end
+
+	self.toggleLayout = function()
+		local newMode = self.state.layoutMode == "Split" and "Stack" or "Split"
+		self:setState({
+			layoutMode = newMode
+		})
+
+		if self.props.Plugin then
+			pcall(function()
+				self.props.Plugin:SetSetting("Hoarcekat_LayoutMode", newMode)
+			end)
+		end
+	end
+
+	self.deviceScaleRef = nil
+	self.updateScale = function()
+		if not self.state.deviceSize or not self.deviceScaleRef then
+			return
+		end
+
+		local container = self.rootRef:getValue()
+		if not container then return end
+
+		-- Account for padding (5px on left/top + margin)
+		local availableSize = container.AbsoluteSize - Vector2.new(20, 20)
+		local deviceSize = self.state.deviceSize
+
+		if availableSize.X <= 0 or availableSize.Y <= 0 then
+			-- Bolt: Wait for layout?
+			return
+		end
+
+		-- Bolt: Max scale 1 to prevent upscaling pixelated mess, but allow downscaling
+		local scale = math.min(availableSize.X / deviceSize.X, availableSize.Y / deviceSize.Y)
+
+		-- If it's too small (e.g. initial render 0x0), don't set it yet
+		if scale <= 0 then return end
+
+		-- Bolt: Prevent excessively tiny scaling when user picks HD on a small screen
+		-- If scale is < 0.1, it's probably unreadable. But "Fit" means Fit.
+		-- User said "muito pequeno". If viewport is tiny, Fit IS tiny.
+		-- But maybe they want to start at 100%?
+		-- No, DeviceEmulator contract is "Fit to Screen".
+
+		self.deviceScaleRef.Scale = scale
 	end
 end
 
@@ -46,12 +343,28 @@ function Preview:didMount()
 	self:refreshPreview()
 end
 
-function Preview:didUpdate()
-	self:refreshPreview()
+function Preview:didUpdate(prevProps, prevState)
+	if prevProps.selectedStory ~= self.props.selectedStory
+		or prevState.deviceSize ~= self.state.deviceSize
+		or prevState.layoutMode ~= self.state.layoutMode
+		or prevState.backgroundColorIndex ~= self.state.backgroundColorIndex
+		or prevState.isPoppedOut ~= self.state.isPoppedOut then
+		self:refreshPreview()
+	end
 end
 
 function Preview:willUnmount()
 	self:clearPreview()
+
+	if self.display then
+		self.display:Destroy()
+		self.display = nil
+	end
+
+	if self.popOutWidget then
+		self.popOutWidget:Destroy()
+		self.popOutWidget = nil
+	end
 end
 
 local ERROR_DELAY = 1
@@ -75,40 +388,210 @@ function Preview:updateDisplay()
 	if not self.currentPreview then
 		return
 	end
-	local target = self.currentPreview.target
-	if not target then
-		return
+
+	-- Handle multiple previews or single preview
+	local states = self.currentPreview
+	-- If it's a single state (old behavior), wrap it
+	if states.target then
+		states = {states}
 	end
+
+	local parent
 	if self.expand then
-		target.Parent = self.display
+		parent = self.display
+	elseif self.state.isPoppedOut and self.popOutWidget then
+		parent = self.popOutWidget
 	else
-		target.Parent = self.rootRef:getValue()
+		parent = self.storyContainerRef:getValue()
+	end
+
+	for _, state in pairs(states) do
+		if state.target then
+			state.target.Parent = parent
+		end
 	end
 end
 
 function Preview:refreshPreview()
-	local selectedStory = self.props.selectedStory
-	if not selectedStory then
-		self:clearPreview()
+	-- Bolt: Async Lock to prevent race conditions during yielding cleanups.
+	-- If a refresh is already in progress, we mark a pending refresh and return.
+	-- The existing loop will pick it up after it finishes the current cycle.
+
+	if self.isRefreshing then
+		self.pendingRefresh = true
 		return
 	end
-	local err, nextState = self:prepareState(selectedStory)
-	if err then
-		self:setError(err)
-		return
-	end
-	self:clearPreview()
-	self.currentPreview = nextState
-	self:updateDisplay()
+
+	self.isRefreshing = true
+	self.pendingRefresh = false
+
+	task.spawn(function()
+		while true do
+			-- Consume the pending flag at the start of the loop
+			self.pendingRefresh = false
+
+			-- 1. Clean up existing preview (This might yield if user has cleanup code)
+			self:clearPreview()
+
+			-- 2. Check if we should mount the new preview
+			-- Validate props inside the thread to get latest values
+			local selectedStories = self.props.selectedStory
+			if type(selectedStories) ~= "table" or selectedStories.ClassName then
+				selectedStories = {selectedStories}
+			end
+
+			if #selectedStories > 0 and selectedStories[1] then
+				self:cancelError()
+				local newStates = {}
+				local mountSuccess = true
+
+				for i, story in ipairs(selectedStories) do
+					local err, nextState = self:prepareState(story)
+					if err then
+						self:setError(err)
+						-- Cleanup already prepared states
+						for _, s in pairs(newStates) do
+							s:destroy()
+						end
+						mountSuccess = false
+						break
+					end
+
+					-- Position the targets if multiple
+					if #selectedStories > 1 then
+						if self.state.layoutMode == "Split" then
+							nextState.target.Size = UDim2.new(1 / #selectedStories, 0, 1, 0)
+							nextState.target.Position = UDim2.new((i - 1) / #selectedStories, 0, 0, 0)
+							nextState.target.BorderSizePixel = 1
+							nextState.target.BorderColor3 = Color3.fromRGB(100, 100, 100)
+						else -- Stack
+							nextState.target.Size = UDim2.new(1, 0, 1, 0)
+							nextState.target.Position = UDim2.new(0, 0, 0, 0)
+							nextState.target.BackgroundTransparency = 1
+							nextState.target.BorderSizePixel = 0
+						end
+					end
+
+					-- Device Emulation (Applied to all targets)
+					-- Bolt: Always wrap to apply background color, even if not emulating size (fit mode)
+					local dSize = self.state.deviceSize
+					local bgColors = {
+						Color3.fromRGB(0, 0, 0),       -- Black
+						Color3.fromRGB(255, 255, 255), -- White
+						Color3.fromRGB(46, 46, 46),    -- Dark Grey
+						Color3.fromRGB(240, 240, 240), -- Light Grey
+					}
+					local bgColor = bgColors[self.state.backgroundColorIndex]
+					local bgImage = nil
+
+					if self.state.backgroundColorIndex == 0 then
+						if self.state.customBgColor then
+							bgColor = self.state.customBgColor
+						elseif self.state.customBgImage then
+							bgColor = Color3.new(1, 1, 1)
+							bgImage = self.state.customBgImage
+						else
+							bgColor = bgColors[1] -- Fallback
+						end
+					elseif not bgColor then
+						bgColor = bgColors[1]
+					end
+
+					-- Bolt: Disable emulation wrapper/background when expanded or popped out to avoid obstruction
+					local isExpandedMode = self.expand or self.state.isPoppedOut
+
+					if dSize and not isExpandedMode then
+						local container = Instance.new("Frame")
+						container.Name = "DeviceContainer"
+						container.BackgroundTransparency = 1
+						container.Size = UDim2.fromScale(1, 1)
+
+						local wrapper = Instance.new("ImageLabel") -- Changed to ImageLabel to support ImageID
+						wrapper.Name = "DeviceWrapper"
+						wrapper.Size = UDim2.fromOffset(dSize.X, dSize.Y)
+						wrapper.AnchorPoint = Vector2.new(0.5, 0.5)
+						wrapper.Position = UDim2.fromScale(0.5, 0.5)
+
+						wrapper.BackgroundColor3 = bgColor
+						if bgImage then
+							wrapper.Image = bgImage
+							wrapper.BackgroundTransparency = 0
+						else
+							wrapper.Image = ""
+							wrapper.BackgroundTransparency = 0
+						end
+
+						wrapper.BorderSizePixel = 2
+						wrapper.BorderColor3 = Color3.fromRGB(100, 100, 100)
+						wrapper.ClipsDescendants = true
+						wrapper.Parent = container
+
+						local scale = Instance.new("UIScale")
+						scale.Parent = wrapper
+						self.deviceScaleRef = scale
+						self.updateScale()
+
+						nextState.target.Parent = wrapper
+						nextState.target = container -- Replace target with container for display update
+					elseif not isExpandedMode then
+						-- No specific device size (Fit mode)
+						-- We still want to apply the background color behind the story
+						local container = Instance.new("ImageLabel") -- Changed to ImageLabel
+						container.Name = "FitContainer"
+						container.Size = UDim2.fromScale(1, 1)
+						container.BackgroundColor3 = bgColor
+						if bgImage then
+							container.Image = bgImage
+							container.BackgroundTransparency = 0
+						else
+							container.Image = ""
+							container.BackgroundTransparency = 0
+						end
+						container.BorderSizePixel = 0
+
+						nextState.target.Parent = container
+						nextState.target = container
+					end
+
+					table.insert(newStates, nextState)
+				end
+
+				if mountSuccess then
+					self.currentPreview = newStates
+					self:updateDisplay()
+					self:setState({
+						renderCount = self.state.renderCount + 1
+					})
+				end
+			end
+
+			-- 3. Check if another refresh request came in while we were working
+			if not self.pendingRefresh then
+				break
+			end
+			-- Loop again to process the pending refresh (which effectively re-clears and re-mounts)
+		end
+
+		self.isRefreshing = false
+	end)
 end
 
 function Preview:clearPreview()
 	self:cancelError()
-	local state = self.currentPreview
-	if state == nil then
+	self.deviceScaleRef = nil
+	local states = self.currentPreview
+	if states == nil then
 		return
 	end
-	state:destroy()
+
+	if states.destroy then
+		states:destroy()
+	elseif type(states) == "table" then
+		for _, s in pairs(states) do
+			if s.destroy then s:destroy() end
+		end
+	end
+
 	self.currentPreview = nil
 end
 
@@ -122,20 +605,43 @@ function Preview:prepareState(selectedStory)
 	}
 
 	function state:destroy()
-		self.monkeyRequireMaid:DoCleaning()
+		if self.destroyed then return end
+		self.destroyed = true
 
+		-- Bolt: Ensure proper cleanup order.
+		-- 1. Run user cleanup (disconnects user events)
 		if self.cleanup then
 			local ok, result = pcall(self.cleanup)
 			if not ok then
 				warn("Error cleaning up story: " .. result)
 			end
-
 			self.cleanup = nil
 		end
 
+		-- 2. Clean up internal connections (hot reload listeners)
+		self.monkeyRequireMaid:DoCleaning()
+
+		-- 3. Destroy target UI immediately to break instance connections
 		if self.target then
 			self.target:Destroy()
+			self.target = nil
 		end
+
+		-- 4. Clear environment references to allow GC
+		-- Explicitly nil out globals to break circular refs
+		for k, v in pairs(self.monkeyGlobalTable) do
+			self.monkeyGlobalTable[k] = nil
+		end
+		table.clear(self.monkeyGlobalTable)
+
+		-- Bolt: Aggressively unload required modules to force fresh state and break Fusion/Signal connections
+		for path, _ in pairs(self.monkeyRequireCache) do
+			-- Check if this path exists in the real global package.loaded (unlikely if sandboxed, but safety first)
+			-- Actually, we need to clear the *internal* cache.
+			-- If user modules put things in _G or shared, we can't easily track that without proxying them.
+			-- But we can ensure we don't hold references to the module results.
+		end
+		table.clear(self.monkeyRequireCache)
 	end
 
 	local function monkeyRequire(otherScript, root)
@@ -147,8 +653,25 @@ function Preview:prepareState(selectedStory)
 			return state.monkeyRequireCache[otherScript]
 		end
 
+		-- Bolt: Throttle hot reloading to avoid lag while typing.
+		-- Reloading on every keystroke (Source change) is too expensive.
+		local reloadParams = { cancelled = false }
+		state.monkeyRequireMaid:GiveTask(function()
+			reloadParams.cancelled = true
+		end)
+
 		state.monkeyRequireMaid:GiveTask(otherScript.Changed:connect(function()
-			self:refreshPreview()
+			-- Cancel any pending reload for this script
+			reloadParams.cancelled = true
+
+			-- Create a new reload task
+			local myParams = { cancelled = false }
+			reloadParams = myParams
+
+			task.delay(0.5, function()
+				if myParams.cancelled then return end
+				self:refreshPreview()
+			end)
 		end))
 
 		-- loadstring is used to avoid cache while preserving `script` (which requiring a clone wouldn't do)
@@ -158,14 +681,182 @@ function Preview:prepareState(selectedStory)
 			return
 		end
 
+		-- Bolt: Create a sandbox to intercept potentially leaking connections (RunService, etc)
+		-- We need to proxy global services.
+		local env = getfenv()
+
+		-- Proxy 'Instance' to track creation
+		local instanceProxy = newproxy(true)
+		local instanceMeta = getmetatable(instanceProxy)
+		instanceMeta.__index = function(_, key)
+			local realValue = Instance[key]
+			if key == "new" then
+				return function(className, parent)
+					local obj = Instance.new(className, parent)
+					state.monkeyRequireMaid:GiveTask(obj) -- Track ALL instances
+					return obj
+				end
+			elseif key == "fromExisting" then
+				return function(existing)
+					local obj = Instance.fromExisting(existing)
+					state.monkeyRequireMaid:GiveTask(obj)
+					return obj
+				end
+			end
+			return realValue
+		end
+
+		-- Proxy 'game' to intercept GetService
+		local gameProxy = newproxy(true)
+		local gameMeta = getmetatable(gameProxy)
+		local serviceCache = {} -- Bolt: Cache services to avoid creating new proxies every call
+
+		-- Helper to track RBXScriptSignal connections
+		local function trackSignal(signal)
+			local signalProxy = newproxy(true)
+			local signalMeta = getmetatable(signalProxy)
+			signalMeta.__index = function(_, sigKey)
+				local realValue = signal[sigKey]
+				if sigKey == "Connect" or sigKey == "connect" then
+					return function(_, callback)
+						local conn = signal:Connect(callback)
+						state.monkeyRequireMaid:GiveTask(conn) -- Track it!
+						return conn
+					end
+				elseif sigKey == "Once" then
+					return function(_, callback)
+						local conn = signal:Once(callback)
+						state.monkeyRequireMaid:GiveTask(conn) -- Track it!
+						return conn
+					end
+				end
+				return realValue
+			end
+			return signalProxy
+		end
+
+		-- Helper to proxy Services
+		local function createServiceProxy(service)
+			local proxy = newproxy(true)
+			local meta = getmetatable(proxy)
+			meta.__index = function(_, key)
+				local realValue = service[key]
+
+				-- Intercept Connections
+				if typeof(realValue) == "RBXScriptSignal" then
+					return trackSignal(realValue)
+				end
+
+				-- Intercept RunService.BindToRenderStep
+				if service.Name == "RunService" and key == "BindToRenderStep" then
+					return function(_, name, priority, callback)
+						local success, err = pcall(function()
+							service:BindToRenderStep(name, priority, callback)
+						end)
+						if success then
+							state.monkeyRequireMaid:GiveTask(function()
+								service:UnbindFromRenderStep(name)
+							end)
+						else
+							warn("Failed to BindToRenderStep:", err)
+						end
+					end
+				end
+
+				-- Intercept ContextActionService.BindAction
+				if service.Name == "ContextActionService" and key == "BindAction" then
+					return function(_, actionName, callback, createTouch, ...)
+						service:BindAction(actionName, callback, createTouch, ...)
+						state.monkeyRequireMaid:GiveTask(function()
+							service:UnbindAction(actionName)
+						end)
+					end
+				end
+
+				-- Intercept Methods to fix 'self'
+				if typeof(realValue) == "function" then
+					return function(_, ...)
+						return realValue(service, ...)
+					end
+				end
+
+				return realValue
+			end
+			return proxy
+		end
+
+		gameMeta.__index = function(_, key)
+			if key == "GetService" then
+				return function(_, serviceName)
+					if serviceCache[serviceName] then
+						return serviceCache[serviceName]
+					end
+
+					local service = game:GetService(serviceName)
+
+					-- Services to proxy for leaks
+					if serviceName == "RunService" or
+					   serviceName == "UserInputService" or
+					   serviceName == "ContextActionService" or
+					   serviceName == "GuiService" or
+					   serviceName == "Players" then
+
+						local proxy = createServiceProxy(service)
+						serviceCache[serviceName] = proxy
+						return proxy
+					end
+
+					serviceCache[serviceName] = service
+					return service
+				end
+			end
+			return game[key]
+		end
+
+		-- Proxy 'task' to track threads
+		local taskProxy = {}
+		for k, v in pairs(task) do
+			if k == "spawn" then
+				taskProxy[k] = function(f, ...)
+					local thread = task.spawn(f, ...)
+					-- We can't easy track completion, but we can cancel on cleanup
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			elseif k == "delay" then
+				taskProxy[k] = function(t, f, ...)
+					local thread = task.delay(t, f, ...)
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			elseif k == "defer" then
+				taskProxy[k] = function(f, ...)
+					local thread = task.defer(f, ...)
+					state.monkeyRequireMaid:GiveTask(function()
+						pcall(task.cancel, thread)
+					end)
+					return thread
+				end
+			else
+				taskProxy[k] = v
+			end
+		end
+
 		local fenv = setmetatable({
 			require = function(requiringScript)
 				return monkeyRequire(requiringScript, otherScript)
 			end,
 			script = otherScript,
 			_G = state.monkeyGlobalTable,
+			game = gameProxy, -- Inject proxy
+			Instance = instanceProxy, -- Inject proxy
+			task = taskProxy, -- Inject proxy
 		}, {
-			__index = getfenv(),
+			__index = env,
 		})
 
 		setfenv(result, fenv)
@@ -178,14 +869,22 @@ function Preview:prepareState(selectedStory)
 
 	local requireOk, result = xpcall(monkeyRequire, debug.traceback, selectedStory)
 	if not requireOk then
-		state:destroy()
-		return "Error requiring story: " .. result, nil
+		-- Bolt: Even if requiring fails, we MUST keep the maid/listeners active.
+		-- If we destroy the state here, we lose the `.Changed` event on the story script,
+		-- so the user can never "fix" the syntax error by typing.
+		-- Instead of destroying, we return the error but keep the state alive (sans target).
+		return "Error requiring story: " .. result, state
 	end
 
 	state.target = Instance.new("Frame")
 	state.target.Name = "Preview"
 	state.target.BackgroundTransparency = 1
 	state.target.Size = UDim2.fromScale(1, 1)
+	-- Bolt: Ensure the Preview frame doesn't block input for the Inspector
+	-- But it must allow child elements to receive input.
+	-- Frames by default block input if Active is true or if they have a background (but transparency=1 usually passes through).
+	-- Just to be safe for Click-to-Select.
+	state.target.Active = false
 
 	local execOk, cleanup = xpcall(function()
 		return result(state.target)
@@ -207,10 +906,108 @@ function Preview:render()
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		[Roact.Ref] = self.rootRef,
+		[Roact.Change.AbsoluteSize] = self.updateScale,
 	}, {
 		UIPadding = e("UIPadding", {
 			PaddingLeft = UDim.new(0, 5),
 			PaddingTop = UDim.new(0, 5),
+		}),
+
+		DeviceEmulator = DeviceEmulator and e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0, 10),
+			Size = UDim2.fromOffset(120, 30),
+			ZIndex = 5,
+		}, {
+			Emulator = e(DeviceEmulator, {
+				OnResize = self.updateDeviceSize,
+				InitialDeviceName = self.state.deviceName,
+			})
+		}),
+
+		-- Bolt: Zoom Controls (Device Emulator Style - Horizontal Layout)
+		ZoomControls = self.state.showZoom and e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, 0, 0, 50), -- Below Device Emulator
+			Size = UDim2.fromOffset(200, 28),
+			ZIndex = 50, -- High Z-Index to overlay content
+		}, {
+			Background = e("Frame", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BorderSizePixel = 0,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+				UIStroke = e("UIStroke", {
+					Color = Color3.fromRGB(60, 60, 60),
+					Thickness = 1,
+				}),
+			}),
+
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 5),
+			}),
+
+			InfoLabel = e("TextLabel", {
+				Text = string.format("%.0f%%", self.state.zoomScale * 100),
+				Size = UDim2.fromOffset(50, 24),
+				BackgroundTransparency = 1,
+				TextColor3 = Color3.new(0.9, 0.9, 0.9),
+				TextSize = 14,
+				Font = Enum.Font.SourceSansBold,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				LayoutOrder = 1,
+			}),
+
+			MinusButton = e("TextButton", {
+				Text = "-",
+				Size = UDim2.fromOffset(24, 24),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 18,
+				Font = Enum.Font.SourceSansBold,
+				LayoutOrder = 2,
+				[Roact.Event.Activated] = function()
+					local newScale = math.max(self.state.zoomScale - 0.1, 0.1)
+					self.onZoomChange(newScale, self.state.zoomPos)
+				end,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			}),
+
+			PlusButton = e("TextButton", {
+				Text = "+",
+				Size = UDim2.fromOffset(24, 24),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 18,
+				Font = Enum.Font.SourceSansBold,
+				LayoutOrder = 3,
+				[Roact.Event.Activated] = function()
+					local newScale = math.min(self.state.zoomScale + 0.1, 5)
+					self.onZoomChange(newScale, self.state.zoomPos)
+				end,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			}),
+
+			ResetButton = e("TextButton", {
+				Text = "Reset",
+				Size = UDim2.fromOffset(50, 24),
+				BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+				TextColor3 = Color3.new(1, 1, 1),
+				TextSize = 12,
+				Font = Enum.Font.SourceSans,
+				LayoutOrder = 4,
+				[Roact.Event.Activated] = self.resetZoom,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			})
 		}),
 
 		SelectButton = e("Frame", {
@@ -218,39 +1015,326 @@ function Preview:render()
 			BackgroundTransparency = 1,
 			Position = UDim2.fromScale(0.99, 0.99),
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "Select" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
 				Activated = self.openSelection,
 				Image = Assets.preview,
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Show in Explorer",
+				OnHover = function() self.setHoveredButton("Select") end,
+				OnUnhover = function() self.clearHoveredButton("Select") end,
 			}),
 		}),
 
-		ExpandButton = e("Frame", {
+		-- Bolt: QoL - Open Source Button
+		OpenSourceButton = selectedStory and e("Frame", {
 			AnchorPoint = Vector2.new(1, 1),
 			BackgroundTransparency = 1,
-			Position = UDim2.new(0.99, -45, 0.99),
+			Position = UDim2.new(0.99, -405, 0.99), -- Requested Position
 			Size = UDim2.fromOffset(40, 40),
-			ZIndex = 2,
+			ZIndex = self.state.hoveredButton == "OpenSource" and 10 or 2,
 		}, {
 			Button = e(FloatingButton, {
-				Activated = self.expandSelection,
-				Image = "rbxasset://textures/ui/VR/toggle2D.png",
+				Activated = function()
+					local story = self.props.selectedStory
+					if type(story) == "table" then story = story[1] end
+					if story and self.props.Plugin then
+						self.props.Plugin:OpenScript(story)
+					end
+				end,
+				Image = "http://www.roblox.com/asset/?id=6034328955", -- New Icon
 				ImageSize = UDim.new(0, 24),
 				Size = UDim.new(0, 40),
+				Tooltip = "Open Source in Editor",
+				OnHover = function() self.setHoveredButton("OpenSource") end,
+				OnUnhover = function() self.clearHoveredButton("OpenSource") end,
 			}),
 		}),
 
-		TrackRemoved = selectedStory and e(EventConnection, {
-			callback = function()
-				if not selectedStory:IsDescendantOf(game) then
-					self.props.endPreview()
-				end
-			end,
-			event = selectedStory.AncestryChanged,
+		-- Bolt: Toolbar
+		Toolbar = Roact.createFragment({
+			ExpandButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -45, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Expand" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.expandSelection,
+					Image = "rbxasset://textures/ui/VR/toggle2D.png",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Expand / Collapse",
+					OnHover = function() self.setHoveredButton("Expand") end,
+					OnUnhover = function() self.clearHoveredButton("Expand") end,
+				}),
+			}),
+
+			PopOutButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -90, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "PopOut" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.togglePopOut,
+					Image = "http://www.roblox.com/asset/?id=6026568256",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					ImageColor3 = self.state.isPoppedOut and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
+					Tooltip = "Pop Out Window",
+					OnHover = function() self.setHoveredButton("PopOut") end,
+					OnUnhover = function() self.clearHoveredButton("PopOut") end,
+				}),
+			}),
+
+			LayoutButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -135, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Layout" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleLayout,
+					Image = self.state.layoutMode == "Split" and "http://www.roblox.com/asset/?id=6031225820" or "http://www.roblox.com/asset/?id=6026568194",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Change Multi-View Layout. (" .. self.state.layoutMode .. ")",
+					OnHover = function() self.setHoveredButton("Layout") end,
+					OnUnhover = function() self.clearHoveredButton("Layout") end,
+				}),
+			}),
+
+			BackgroundColorButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -270, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Background" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleBackgroundColor,
+					-- Right click to open controls
+					[Roact.Event.MouseButton2Click] = self.openBgControls,
+					Image = "http://www.roblox.com/asset/?id=6026568253",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Change Background (Right Click for Custom)",
+					OnHover = function() self.setHoveredButton("Background") end,
+					OnUnhover = function() self.clearHoveredButton("Background") end,
+				}),
+
+				Controls = self.state.showBgControls and e("Frame", {
+					AnchorPoint = Vector2.new(1, 1),
+					Position = UDim2.new(0, -5, 0, 0), -- To the left of the button
+					Size = UDim2.fromOffset(200, 40),
+					BackgroundColor3 = Color3.fromRGB(46, 46, 46),
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					ZIndex = 20,
+				}, {
+					Input = e("TextBox", {
+						Size = UDim2.new(1, -10, 1, -10),
+						Position = UDim2.fromOffset(5, 5),
+						Text = "",
+						PlaceholderText = "R,G,B or Image ID",
+						ClearTextOnFocus = false,
+						BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+						TextColor3 = Color3.new(1, 1, 1),
+						[Roact.Event.FocusLost] = function(rbx)
+							self.applyCustomBg(rbx.Text)
+						end
+					})
+				})
+			}),
+
+			StatsButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -180, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Stats" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleStats,
+					Image = "http://www.roblox.com/asset/?id=6031084742",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Toggle Stats Performance",
+					OnHover = function() self.setHoveredButton("Stats") end,
+					OnUnhover = function() self.clearHoveredButton("Stats") end,
+				}),
+			}),
+
+			DebugButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -225, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Debug" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleDebug,
+					Image = "http://www.roblox.com/asset/?id=6026568210",
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Toggle Debug Overlay",
+					OnHover = function() self.setHoveredButton("Debug") end,
+					OnUnhover = function() self.clearHoveredButton("Debug") end,
+				}),
+			}),
+
+			ZoomButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -315, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Zoom" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleZoom,
+					Image = "http://www.roblox.com/asset/?id=6035229856", -- New Icon
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = "Zoom / Pan Mode: " .. (self.state.showZoom and "ON" or "OFF"),
+					ImageColor3 = self.state.showZoom and Color3.fromRGB(0, 170, 255) or Color3.new(1, 1, 1),
+					OnHover = function() self.setHoveredButton("Zoom") end,
+					OnUnhover = function() self.clearHoveredButton("Zoom") end,
+				}),
+			}),
+
+			InspectorButton = e("Frame", {
+				AnchorPoint = Vector2.new(1, 1),
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0.99, -360, 0.99),
+				Size = UDim2.fromOffset(40, 40),
+				ZIndex = self.state.hoveredButton == "Inspector" and 10 or 2,
+			}, {
+				Button = e(FloatingButton, {
+					Activated = self.toggleInspector,
+					Image = "rbxasset://textures/StudioToolbox/Search.png", -- Generic search/eye icon
+					ImageSize = UDim.new(0, 24),
+					Size = UDim.new(0, 40),
+					Tooltip = self.expand and ("Inspector: " .. (self.state.showInspector and "ON" or "OFF")) or "Inspector (Only available in Expanded View)",
+					ImageColor3 = self.state.showInspector and Color3.fromRGB(0, 170, 255) or (self.expand and Color3.new(1, 1, 1) or Color3.fromRGB(100, 100, 100)),
+					OnHover = function() self.setHoveredButton("Inspector") end,
+					OnUnhover = function() self.clearHoveredButton("Inspector") end,
+				}),
+			}),
 		}),
+
+		ResetPluginButton = e("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0, 5, 0.99, 0), -- Bottom Left
+			Size = UDim2.fromOffset(40, 40),
+			ZIndex = 100,
+		}, {
+			Button = e(FloatingButton, {
+				Activated = self.forceSoftReset,
+				Image = "http://www.roblox.com/asset/?id=6023565901", -- New Icon
+				ImageSize = UDim.new(0, 24),
+				Size = UDim.new(0, 40),
+				ImageColor3 = Color3.fromRGB(255, 100, 100), -- Red to indicate "Force"
+				Tooltip = "Force Reload (Fix Leaks)",
+				OnHover = function() self.setHoveredButton("Reset") end,
+				OnUnhover = function() self.clearHoveredButton("Reset") end,
+			}),
+		}),
+
+		StatsOverlay = (function()
+			if not StatsOverlay then return nil end
+
+			local target = self.storyContainerRef:getValue()
+			local portalTarget = nil
+
+			if self.expand and self.display then
+				target = self.display
+				portalTarget = self.display
+			elseif self.state.isPoppedOut and self.popOutWidget then
+				target = self.popOutWidget
+				portalTarget = self.popOutWidget
+			end
+
+			local overlay = e(StatsOverlay, {
+				Visible = self.state.showStats,
+				RenderCount = self.state.renderCount,
+				Target = target,
+			})
+
+			if portalTarget then
+				return e(Roact.Portal, { target = portalTarget }, { Overlay = overlay })
+			end
+			return overlay
+		end)(),
+
+		StoryContainer = e(ViewportControls, {
+			Enabled = self.state.showZoom,
+			Scale = self.state.zoomScale,
+			Position = self.state.zoomPos,
+			OnChange = self.onZoomChange,
+		}, {
+			Content = e("Frame", {
+				Name = "StoryContainer",
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				ZIndex = 1,
+				[Roact.Ref] = self.storyContainerRef,
+			}),
+		}),
+
+		DebugOverlay = DebugOverlay and e(DebugOverlay, {
+			Visible = self.state.showDebug,
+			Target = (function()
+				if self.expand and self.display then
+					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				else
+					return self.storyContainerRef:getValue()
+				end
+			end)(),
+		}),
+
+		InspectorOverlay = InspectorOverlay and e(InspectorOverlay, {
+			Enabled = self.state.showInspector,
+			Target = (function()
+				-- Inspector should target the active display area
+				if self.expand and self.display then
+					return self.display
+				elseif self.state.isPoppedOut and self.popOutWidget then
+					return self.popOutWidget
+				else
+					return self.storyContainerRef:getValue()
+				end
+			end)(),
+		}),
+
+		-- Bolt: Handle TrackRemoved for multiple stories
+		-- Using "Folder" instead of createFragment to avoid potential version issues or nil errors
+		TrackRemoved = e("Folder", {}, (function()
+			local connections = {}
+			local stories = self.props.selectedStory
+			if type(stories) ~= "table" then stories = {stories} end
+
+			for i, story in ipairs(stories) do
+				if story and story.Parent then
+					connections["TrackRemoved_"..i] = e(EventConnection, {
+						callback = function()
+							if not story:IsDescendantOf(game) then
+								self.props.endPreview()
+							end
+						end,
+						event = story.AncestryChanged,
+					})
+				end
+			end
+			return connections
+		end)())
 	})
 end
 

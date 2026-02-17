@@ -3,6 +3,7 @@ local Hoarcekat = script:FindFirstAncestor("Hoarcekat")
 local Assets = require(Hoarcekat.Plugin.Assets)
 local Roact = require(Hoarcekat.Vendor.Roact)
 local StudioThemeAccessor = require(script.Parent.StudioThemeAccessor)
+local Tooltip = require(script.Parent.Tooltip)
 
 local e = Roact.createElement
 
@@ -14,10 +15,16 @@ function FloatingButton:init()
 
 	self.hover = function()
 		self.setHovered(true)
+		if self.props.OnHover then
+			self.props.OnHover()
+		end
 	end
 
 	self.unhover = function()
 		self.setHovered(false)
+		if self.props.OnUnhover then
+			self.props.OnUnhover()
+		end
 	end
 
 	self.press = function()
@@ -58,6 +65,7 @@ function FloatingButton:render()
 				[Roact.Event.MouseButton1Down] = self.press,
 				[Roact.Event.MouseButton1Up] = self.unpress,
 				[Roact.Event.Activated] = props.Activated,
+				[Roact.Event.MouseButton2Click] = props[Roact.Event.MouseButton2Click],
 			}, {
 				Image = e("ImageLabel", {
 					AnchorPoint = Vector2.new(0.5, 0.5),
@@ -65,6 +73,12 @@ function FloatingButton:render()
 					Image = props.Image,
 					Position = UDim2.fromScale(0.5, 0.5),
 					Size = UDim2.new(props.ImageSize, props.ImageSize),
+					ImageColor3 = props.ImageColor3 or nil,
+				}),
+
+				Tooltip = props.Tooltip and e(Tooltip, {
+					Text = props.Tooltip,
+					Visible = self.hovered,
 				}),
 			})
 		end,

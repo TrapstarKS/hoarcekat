@@ -89,7 +89,7 @@ end
 --[[
 	Wrapper around plugin:CreatePluginGui
 ]]
-function PluginFacade:createDockWidgetPluginGui(name, ...)
+function PluginFacade:CreateDockWidgetPluginGui(name, ...)
 	if self._pluginGuis[name] then
 		return self._pluginGuis[name]
 	end
@@ -103,8 +103,20 @@ end
 --[[
 	Wrapper around plugin:GetMouse
 ]]
-function PluginFacade:getMouse()
+function PluginFacade:GetMouse()
 	return plugin:GetMouse()
+end
+
+function PluginFacade:GetSetting(key)
+	return plugin:GetSetting(key)
+end
+
+function PluginFacade:SetSetting(key, value)
+	plugin:SetSetting(key, value)
+end
+
+function PluginFacade:OpenScript(scriptInstance, lineNumber)
+	plugin:OpenScript(scriptInstance, lineNumber)
 end
 
 --[[
@@ -115,7 +127,11 @@ function PluginFacade:beforeUnload(callback)
 end
 
 function PluginFacade._load(_, savedState)
-	local ok, result = pcall(require, currentRoot.Plugin.Main)
+	local ok, result = xpcall(function()
+		return require(currentRoot.Plugin.Main)
+	end, function(err)
+		return err .. "\n" .. debug.traceback()
+	end)
 
 	if not ok then
 		warn("Plugin failed to load: " .. result)
@@ -124,7 +140,11 @@ function PluginFacade._load(_, savedState)
 
 	local Plugin = result
 
-	ok, result = pcall(Plugin, PluginFacade, savedState)
+	ok, result = xpcall(function()
+		Plugin(PluginFacade, savedState)
+	end, function(err)
+		return err .. "\n" .. debug.traceback()
+	end)
 
 	if not ok then
 		warn("Plugin failed to run: " .. result)

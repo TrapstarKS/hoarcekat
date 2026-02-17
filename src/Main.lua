@@ -23,10 +23,66 @@ local function Main(plugin, savedState)
 
 	local toggleButton = plugin:button(toolbar, "Hoarcekat", "Open the Hoarcekat window", "rbxassetid://4621571957")
 
+	-- Bolt: Load persisted selected story (Per Place)
+	-- Debug: print("Loading settings for PlaceId:", game.PlaceId)
+	local savedStoryPath = plugin:GetSetting("LastSelectedStory_" .. tostring(game.PlaceId))
+	-- Debug: print("Saved Path:", savedStoryPath)
+
+	local savedStory
+	if savedStoryPath then
+		local current = game
+		local parts = string.split(savedStoryPath, ".")
+		local i = 1
+		local pathValid = true
+
+		while i <= #parts and current do
+			local found = false
+			local name = parts[i]
+
+			-- Bolt: Greedy matching for names containing dots (e.g. "MyStory.story")
+			for j = i, #parts do
+				if j > i then
+					name = name .. "." .. parts[j]
+				end
+
+				local child = current:FindFirstChild(name)
+				if child then
+					current = child
+					i = j + 1
+					found = true
+					break
+				end
+			end
+
+			if not found then
+				pathValid = false
+				break
+			end
+		end
+
+		if pathValid then
+			savedStory = current
+		end
+		-- Debug: print("Resolved Story:", savedStory)
+	end
+
+	if savedStory and savedState then
+		-- Injected saved story into the initial state if compatible with reducer
+		-- We need to check Reducer structure. StoryPicker handles the selected story.
+		-- Reducer is combined? Let's assume standard Rodux.
+		if not savedState.StoryPicker then
+			savedState.StoryPicker = {savedStory} -- Assuming list structure from previous patch
+		end
+	elseif savedStory then
+		savedState = {
+			StoryPicker = {savedStory}
+		}
+	end
+
 	local store = Rodux.Store.new(Reducer, savedState)
 
 	local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Float, false, false, 0, 0)
-	local gui = plugin:createDockWidgetPluginGui("Hoarcekat" .. nameSuffix, info)
+	local gui = plugin:CreateDockWidgetPluginGui("Hoarcekat" .. nameSuffix, info)
 	gui.Name = "Hoarcekat" .. nameSuffix
 	gui.Title = "Hoarcekat " .. displaySuffix
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -41,23 +97,67 @@ local function Main(plugin, savedState)
 		store = store,
 	}, {
 		App = Roact.createElement(App, {
-			Mouse = plugin:getMouse(),
+			Mouse = plugin:GetMouse(),
+			Plugin = plugin,
 		}),
 	})
 
 	local instance = Roact.mount(app, gui, "Hoarcekat")
 
+	local unloadConnection
+
+	-- Bolt: Brute-force cleanup of any lingering CoreGui artifacts from previous sessions (crashes)
+	local CoreGui = game:GetService("CoreGui")
+	for _, child in ipairs(CoreGui:GetChildren()) do
+		if child.Name == "HoarcekatDisplay" then
+			child:Destroy()
+		end
+	end
+
 	plugin:beforeUnload(function()
-		Roact.unmount(instance)
+		-- Bolt: Persist selected story (Per Place)
+		local state = store:getState()
+		local settingKey = "LastSelectedStory_" .. tostring(game.PlaceId)
+
+		if state.StoryPicker and type(state.StoryPicker) == "table" and state.StoryPicker[1] then
+			local story = state.StoryPicker[1]
+			-- We can't save instances directly to settings, so save the path (FullName)
+			local path = story:GetFullName()
+			if path:sub(1, 5) == "game." then
+				path = path:sub(6)
+			end
+			plugin:SetSetting(settingKey, path)
+		else
+			plugin:SetSetting(settingKey, nil)
+		end
+
+		local success, err = pcall(function()
+			Roact.unmount(instance)
+		end)
+		if not success then
+			warn("Hoarcekat: Failed to unmount safely:", err)
+		end
+
 		connection:Disconnect()
-		return store:getState()
+
+		if unloadConnection then
+			unloadConnection:Disconnect()
+		end
+
+		-- Double check CoreGui cleanup
+		for _, child in ipairs(CoreGui:GetChildren()) do
+			if child.Name == "HoarcekatDisplay" then
+				child:Destroy()
+			end
+		end
+
+		return state
 	end)
 
 	if RunService:IsRunning() then
 		return
 	end
 
-	local unloadConnection
 	unloadConnection = gui.AncestryChanged:Connect(function()
 		print("New Hoarcekat version coming online; unloading the old version")
 		unloadConnection:Disconnect()
